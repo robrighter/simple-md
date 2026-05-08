@@ -1,0 +1,12 @@
+{
+  "identifier": "default",
+  "description": "Capability for the main Simple MD desktop window.",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "dialog:default",
+    "opener:default",
+    "opener:allow-open-path",
+    "shell:default"
+  ]
+}

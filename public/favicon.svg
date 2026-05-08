@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="none">
+  <!-- Burgundy rounded-square container.
+       Letterform inside is a heavy sans-serif M from a stack of
+       widely-available system fonts, so we don't need to embed a font. -->
+  <rect width="464" height="464" x="24" y="24" fill="#7a1f2b" rx="108"/>
+  <text
+    x="256"
+    y="256"
+    fill="#f5ecdb"
+    font-family="'Avenir Next', 'Helvetica Neue', 'Segoe UI Variable', 'Arial', sans-serif"
+    font-size="320"
+    font-weight="900"
+    text-anchor="middle"
+    dominant-baseline="central"
+    letter-spacing="-12"
+  >M</text>
+</svg>
