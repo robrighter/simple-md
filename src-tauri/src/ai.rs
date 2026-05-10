@@ -336,6 +336,17 @@ fn locate_llama_server(app: &AppHandle) -> Result<PathBuf, String> {
 
     // Packaged app: alongside other resources.
     if let Ok(resource_dir) = app.path().resource_dir() {
+        // Windows: Tauri strips the target triple suffix when installing the
+        // sidecar, so the binary lands as "llama-server.exe" directly in the
+        // install directory (which is what resource_dir() returns on Windows).
+        #[cfg(target_os = "windows")]
+        {
+            let candidate = resource_dir.join("llama-server.exe");
+            if candidate.exists() {
+                return Ok(candidate);
+            }
+        }
+
         let candidate = resource_dir.join("binaries").join(&bin_name);
         if candidate.exists() {
             return Ok(candidate);
@@ -374,6 +385,8 @@ const fn current_target_triple() -> &'static str {
         "x86_64-unknown-linux-gnu"
     } else if cfg!(all(target_os = "windows", target_arch = "x86_64")) {
         "x86_64-pc-windows-msvc"
+    } else if cfg!(all(target_os = "windows", target_arch = "aarch64")) {
+        "aarch64-pc-windows-msvc"
     } else {
         "unknown"
     }
