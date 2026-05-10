@@ -5,6 +5,7 @@ type ToolbarProps = {
   onOpenWorkspace: () => void
   onCreateNote: () => void
   onCreateFolder: () => void
+  onAddFolder: () => void
   onSave: () => void
   onImportUrl: () => void
 }
@@ -25,6 +26,7 @@ export function Toolbar({
   onOpenWorkspace,
   onCreateNote,
   onCreateFolder,
+  onAddFolder,
   onSave,
   onImportUrl,
 }: ToolbarProps) {
@@ -48,6 +50,14 @@ export function Toolbar({
               }}
             >
               New folder
+            </MenuItem>
+            <MenuItem
+              onSelect={() => {
+                close()
+                onAddFolder()
+              }}
+            >
+              Add folder…
             </MenuItem>
           </>
         )}

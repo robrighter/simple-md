@@ -826,6 +826,7 @@ function App() {
           onOpenWorkspace={() => void handleOpenWorkspace()}
           onCreateNote={() => void handleCreateNote()}
           onCreateFolder={() => void handleCreateFolder()}
+          onAddFolder={() => void handleOpenWorkspace()}
           onSave={() => void handleSaveDocument()}
           onImportUrl={() => void handleImportUrl()}
         />
@@ -861,7 +862,7 @@ function App() {
                 selectedPath={selectedTreePath}
                 onActivateNode={handleOpenTreeNode}
                 onSelectPath={setSelectedTreePath}
-                onOpenWorkspace={handleOpenWorkspace}
+                onOpenWorkspace={() => void handleOpenWorkspace()}
                 onOpenRecentPath={handleOpenRecentPath}
                 recents={recents}
                 onRename={(path) => {
