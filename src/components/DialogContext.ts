@@ -9,6 +9,21 @@ export type PromptOpts = {
   cancelLabel?: string
 }
 
+export type FileLocationPromptResult = {
+  name: string
+  folder: string
+}
+
+export type FileLocationPromptOpts = {
+  title: string
+  message?: string
+  defaultName?: string
+  defaultFolder: string
+  namePlaceholder?: string
+  okLabel?: string
+  cancelLabel?: string
+}
+
 export type ConfirmOpts = {
   title: string
   message?: string
@@ -26,6 +41,9 @@ export type AlertOpts = {
 
 export type DialogApi = {
   prompt: (opts: PromptOpts) => Promise<string | null>
+  fileLocationPrompt: (
+    opts: FileLocationPromptOpts,
+  ) => Promise<FileLocationPromptResult | null>
   confirm: (opts: ConfirmOpts) => Promise<boolean>
   alert: (opts: AlertOpts) => Promise<void>
 }

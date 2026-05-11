@@ -4,7 +4,7 @@ use std::{
     fs,
     path::{Path, PathBuf},
     sync::Mutex,
-    time::Duration,
+    time::{Duration, UNIX_EPOCH},
 };
 
 use anyhow::Context;
@@ -47,6 +47,7 @@ struct DocumentPayload {
     path: String,
     name: String,
     content: String,
+    version: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -84,19 +85,34 @@ fn list_workspace(path: String) -> Result<WorkspaceSnapshot, String> {
 #[tauri::command]
 fn open_document(path: String) -> Result<DocumentPayload, String> {
     let target = PathBuf::from(&path);
-    let content =
-        fs::read_to_string(&target).with_context(|| format!("Failed to read {}", path)).map_err(error_to_string)?;
+    let content = fs::read_to_string(&target)
+        .with_context(|| format!("Failed to read {}", path))
+        .map_err(error_to_string)?;
 
     Ok(DocumentPayload {
         path: normalize_path(&target),
         name: file_name(&target),
         content,
+        version: document_version(&target).map_err(error_to_string)?,
     })
 }
 
 #[tauri::command]
-fn save_document(path: String, content: String) -> Result<DocumentPayload, String> {
+fn save_document(
+    path: String,
+    content: String,
+    expected_version: Option<String>,
+) -> Result<DocumentPayload, String> {
     let target = PathBuf::from(&path);
+
+    if let Some(expected_version) = expected_version {
+        let current_version = document_version(&target).map_err(error_to_string)?;
+
+        if current_version.as_deref() != Some(expected_version.as_str()) {
+            return Err("The file changed on disk since it was last loaded.".into());
+        }
+    }
+
     fs::write(&target, &content)
         .with_context(|| format!("Failed to save {}", path))
         .map_err(error_to_string)?;
@@ -105,11 +121,16 @@ fn save_document(path: String, content: String) -> Result<DocumentPayload, Strin
         path: normalize_path(&target),
         name: file_name(&target),
         content,
+        version: document_version(&target).map_err(error_to_string)?,
     })
 }
 
 #[tauri::command]
-fn create_note(parent_dir: String, name: String, initial_content: Option<String>) -> Result<DocumentPayload, String> {
+fn create_note(
+    parent_dir: String,
+    name: String,
+    initial_content: Option<String>,
+) -> Result<DocumentPayload, String> {
     let parent = PathBuf::from(&parent_dir);
 
     if !parent.exists() || !parent.is_dir() {
@@ -132,6 +153,7 @@ fn create_note(parent_dir: String, name: String, initial_content: Option<String>
         path: normalize_path(&target),
         name: file_name(&target),
         content,
+        version: document_version(&target).map_err(error_to_string)?,
     })
 }
 
@@ -284,7 +306,8 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_shell::init())
         .setup(|app| {
-            let current_args = normalize_arg_targets(std::env::args().collect(), std::env::current_dir().ok());
+            let current_args =
+                normalize_arg_targets(std::env::args().collect(), std::env::current_dir().ok());
 
             if !current_args.is_empty() {
                 store_targets(&app.handle(), current_args);
@@ -345,7 +368,10 @@ fn build_tree(root: &Path) -> anyhow::Result<Vec<TreeNode>> {
             files.push(TreeNode::File {
                 name,
                 path: normalize_path(&path),
-                extension: path.extension().and_then(|value| value.to_str()).map(|value| value.to_string()),
+                extension: path
+                    .extension()
+                    .and_then(|value| value.to_str())
+                    .map(|value| value.to_string()),
             });
         }
     }
@@ -373,6 +399,13 @@ fn file_name(path: &Path) -> String {
         .and_then(|value| value.to_str())
         .unwrap_or("untitled")
         .to_string()
+}
+
+fn document_version(path: &Path) -> anyhow::Result<Option<String>> {
+    let metadata = fs::metadata(path)?;
+    let modified = metadata.modified()?.duration_since(UNIX_EPOCH)?.as_nanos();
+
+    Ok(Some(format!("{}:{}", modified, metadata.len())))
 }
 
 fn sort_key(node: &TreeNode) -> String {
@@ -403,7 +436,9 @@ fn validate_leaf_name<'a>(name: &'a str, label: &str) -> Result<&'a str, String>
     }
 
     if name == "." || name == ".." || name.contains('/') || name.contains('\\') {
-        return Err(format!("The {label} name must not contain path separators."));
+        return Err(format!(
+            "The {label} name must not contain path separators."
+        ));
     }
 
     Ok(name)

@@ -3,13 +3,22 @@ import {
   DialogContext,
   type AlertOpts,
   type ConfirmOpts,
+  type FileLocationPromptOpts,
+  type FileLocationPromptResult,
   type PromptOpts,
 } from './DialogContext'
+import { chooseFolderDialog } from '../lib/desktop'
 
 type PendingPrompt = {
   kind: 'prompt'
   opts: PromptOpts
   resolve: (value: string | null) => void
+}
+
+type PendingFileLocationPrompt = {
+  kind: 'file-location-prompt'
+  opts: FileLocationPromptOpts
+  resolve: (value: FileLocationPromptResult | null) => void
 }
 
 type PendingConfirm = {
@@ -24,17 +33,27 @@ type PendingAlert = {
   resolve: () => void
 }
 
-type Pending = PendingPrompt | PendingConfirm | PendingAlert | null
+type Pending = PendingPrompt | PendingFileLocationPrompt | PendingConfirm | PendingAlert | null
 
 export function DialogProvider({ children }: { children: ReactNode }) {
   const [pending, setPending] = useState<Pending>(null)
   const [draft, setDraft] = useState('')
+  const [folderDraft, setFolderDraft] = useState('')
   const inputRef = useRef<HTMLInputElement | null>(null)
 
   const prompt = useCallback((opts: PromptOpts) => {
     return new Promise<string | null>((resolve) => {
       setPending({ kind: 'prompt', opts, resolve })
       setDraft(opts.defaultValue ?? '')
+      setFolderDraft('')
+    })
+  }, [])
+
+  const fileLocationPrompt = useCallback((opts: FileLocationPromptOpts) => {
+    return new Promise<FileLocationPromptResult | null>((resolve) => {
+      setPending({ kind: 'file-location-prompt', opts, resolve })
+      setDraft(opts.defaultName ?? '')
+      setFolderDraft(opts.defaultFolder)
     })
   }, [])
 
@@ -53,7 +72,7 @@ export function DialogProvider({ children }: { children: ReactNode }) {
   const cancel = useCallback(() => {
     setPending((current) => {
       if (!current) return null
-      if (current.kind === 'prompt') {
+      if (current.kind === 'prompt' || current.kind === 'file-location-prompt') {
         current.resolve(null)
       } else if (current.kind === 'confirm') {
         current.resolve(false)
@@ -69,6 +88,12 @@ export function DialogProvider({ children }: { children: ReactNode }) {
       if (!current) return null
       if (current.kind === 'prompt') {
         current.resolve(draft)
+      } else if (current.kind === 'file-location-prompt') {
+        if (!draft.trim() || !folderDraft.trim()) {
+          return current
+        }
+
+        current.resolve({ name: draft, folder: folderDraft })
       } else if (current.kind === 'confirm') {
         current.resolve(true)
       } else {
@@ -76,10 +101,27 @@ export function DialogProvider({ children }: { children: ReactNode }) {
       }
       return null
     })
-  }, [draft])
+  }, [draft, folderDraft])
+
+  const chooseFolder = useCallback(async () => {
+    if (pending?.kind !== 'file-location-prompt') {
+      return
+    }
+
+    try {
+      const selected = await chooseFolderDialog('Choose Folder')
+
+      if (selected) {
+        setFolderDraft(selected)
+      }
+    } catch {
+      // In browser preview the native picker is unavailable; keep the visible
+      // path editable so the user can still set the destination.
+    }
+  }, [pending])
 
   useEffect(() => {
-    if (pending?.kind === 'prompt') {
+    if (pending?.kind === 'prompt' || pending?.kind === 'file-location-prompt') {
       const id = window.requestAnimationFrame(() => {
         inputRef.current?.focus()
         inputRef.current?.select()
@@ -100,7 +142,7 @@ export function DialogProvider({ children }: { children: ReactNode }) {
   }, [pending, cancel])
 
   return (
-    <DialogContext.Provider value={{ prompt, confirm, alert }}>
+    <DialogContext.Provider value={{ prompt, fileLocationPrompt, confirm, alert }}>
       {children}
       {pending && (
         <div
@@ -132,6 +174,39 @@ export function DialogProvider({ children }: { children: ReactNode }) {
                 }}
               />
             )}
+            {pending.kind === 'file-location-prompt' && (
+              <div className="dialog-fields">
+                <label className="dialog-field">
+                  <span>File name</span>
+                  <input
+                    ref={inputRef}
+                    className="dialog-input"
+                    value={draft}
+                    placeholder={pending.opts.namePlaceholder}
+                    onChange={(event) => setDraft(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter') {
+                        event.preventDefault()
+                        ok()
+                      }
+                    }}
+                  />
+                </label>
+                <label className="dialog-field">
+                  <span>Folder</span>
+                  <div className="dialog-folder-row">
+                    <input
+                      className="dialog-input"
+                      value={folderDraft}
+                      onChange={(event) => setFolderDraft(event.target.value)}
+                    />
+                    <button type="button" className="ghost-button" onClick={() => void chooseFolder()}>
+                      Choose…
+                    </button>
+                  </div>
+                </label>
+              </div>
+            )}
             <div className="ai-modal__actions">
               {pending.kind !== 'alert' && (
                 <button type="button" className="ghost-button" onClick={cancel}>
@@ -148,6 +223,10 @@ export function DialogProvider({ children }: { children: ReactNode }) {
                     : 'ai-button ai-button--primary'
                 }
                 onClick={ok}
+                disabled={
+                  pending.kind === 'file-location-prompt' &&
+                  (!draft.trim() || !folderDraft.trim())
+                }
               >
                 {pending.opts.okLabel ??
                   (pending.kind === 'confirm' && pending.opts.destructive

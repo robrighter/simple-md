@@ -5,7 +5,7 @@ type ToolbarProps = {
   onOpenFile: () => void
   onCreateNote: () => void
   onCreateFolder: () => void
-  onAddFolder: () => void
+  onOpenFolder: () => void
   onSave: () => void
   onImportUrl: () => void
 }
@@ -26,7 +26,7 @@ export function Toolbar({
   onOpenFile,
   onCreateNote,
   onCreateFolder,
-  onAddFolder,
+  onOpenFolder,
   onSave,
   onImportUrl,
 }: ToolbarProps) {
@@ -41,7 +41,7 @@ export function Toolbar({
                 onCreateNote()
               }}
             >
-              New note
+              New file
             </MenuItem>
             <MenuItem
               onSelect={() => {
@@ -51,13 +51,28 @@ export function Toolbar({
             >
               New folder
             </MenuItem>
+          </>
+        )}
+      </Menu>
+
+      <Menu label="Open ▾">
+        {(close) => (
+          <>
             <MenuItem
               onSelect={() => {
                 close()
-                onAddFolder()
+                onOpenFile()
               }}
             >
-              Add folder…
+              Open file…
+            </MenuItem>
+            <MenuItem
+              onSelect={() => {
+                close()
+                onOpenFolder()
+              }}
+            >
+              Open folder…
             </MenuItem>
           </>
         )}
@@ -83,9 +98,6 @@ export function Toolbar({
         )}
       </Menu>
 
-      <button type="button" onClick={onOpenFile} disabled={busy} title="Open a Markdown file">
-        Open
-      </button>
       <button type="button" onClick={onSave} disabled={busy} title="Save (⌘S)">
         Save
       </button>

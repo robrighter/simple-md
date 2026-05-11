@@ -83,6 +83,7 @@ function renderChart(spec: ChartSpec) {
             dataKey={series.key}
             name={series.label ?? series.key}
             fill={series.color ?? '#7a1f2b'}
+            isAnimationActive={false}
             stackId={spec.stacked ? 'stack' : undefined}
             radius={[8, 8, 0, 0]}
           />
@@ -104,6 +105,7 @@ function renderChart(spec: ChartSpec) {
             strokeWidth={3}
             dot={{ r: 2.5 }}
             activeDot={{ r: 5 }}
+            isAnimationActive={false}
           />
         ))}
       </LineChart>
@@ -123,6 +125,7 @@ function renderChart(spec: ChartSpec) {
             stroke={series.color ?? '#4f846f'}
             fillOpacity={0.24}
             strokeWidth={3}
+            isAnimationActive={false}
             stackId={spec.stacked ? 'stack' : undefined}
           />
         ))}
@@ -153,6 +156,7 @@ function renderChart(spec: ChartSpec) {
         innerRadius={spec.donut ? 64 : 0}
         outerRadius={110}
         paddingAngle={3}
+        isAnimationActive={false}
       >
         {spec.data.map((entry, index) => (
           <Cell

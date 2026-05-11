@@ -39,6 +39,11 @@ export type OpenDocument = {
   mode: DocumentMode
   isDirty: boolean
   path?: string
+  savedVersion?: string
+  externalChange?: {
+    version: string
+    content: string
+  }
   sourceUrl?: string
   baseUrl?: string
   workspacePath?: string
@@ -49,6 +54,7 @@ export type DocumentPayload = {
   path: string
   name: string
   content: string
+  version?: string
 }
 
 export type ImportedDocumentPayload = {

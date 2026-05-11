@@ -41,7 +41,7 @@ export type AiApi = {
   downloadModel: (variant: Variant) => Promise<void>
   startRuntime: (variant: Variant) => Promise<void>
   stopRuntime: () => Promise<void>
-  sendMessage: (text: string, documentContext: string) => Promise<void>
+  sendMessage: (text: string, documentContext: string) => Promise<string | null>
   cancelStream: () => void
   resetChat: () => void
 }
@@ -151,7 +151,7 @@ export function useAi(): AiApi {
   const sendMessage = useCallback(
     async (text: string, documentContext: string) => {
       if (!runtime.running || runtime.port === null) {
-        return
+        return null
       }
 
       const userTurn: ChatTurn = {
@@ -173,10 +173,11 @@ export function useAi(): AiApi {
           role: 'system',
           content:
             'You are a writing collaborator embedded in a Markdown editor. The user can ' +
-            'apply your replies to their document with three actions: Insert at cursor, ' +
-            'Replace selection, and Append. Because of that:\n' +
-            "- For edit requests, return ONLY the new Markdown — no preamble like 'Here's…', " +
-            'no surrounding code fences. Plain Markdown only.\n' +
+            'ask questions or ask you to edit the current Markdown document. Because of that:\n' +
+            "- For edit requests, return ONLY the Markdown that should be applied — no preamble like 'Here's…', " +
+            'no surrounding code fences, no summary. Plain Markdown only.\n' +
+            '- If the document looks like a placeholder or the user asks to rewrite the file, return the complete replacement document.\n' +
+            '- If the user asks to add a new section, return the Markdown section to add.\n' +
             '- For questions, reply conversationally and concisely.\n' +
             '- Match the existing tone, voice, and formatting of the document.\n\n' +
             "The user's current document:\n\n" +
@@ -189,9 +190,11 @@ export function useAi(): AiApi {
 
       const controller = new AbortController()
       abortRef.current = controller
+      let finalContent = ''
 
       await streamChat(runtime.port, history, controller.signal, {
         onToken: (token) => {
+          finalContent += token
           setChat((prev) =>
             prev.map((turn) =>
               turn.id === assistantTurn.id ? { ...turn, content: turn.content + token } : turn,
@@ -217,6 +220,8 @@ export function useAi(): AiApi {
           abortRef.current = null
         },
       })
+
+      return finalContent.trim() || null
     },
     [runtime, chat],
   )

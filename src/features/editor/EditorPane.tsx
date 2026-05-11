@@ -4,8 +4,10 @@ import { markdown } from '@codemirror/lang-markdown'
 import { EditorView } from '@codemirror/view'
 
 export type EditorApi = {
+  getContent: () => string
   getSelection: () => string
   hasSelection: () => boolean
+  replaceDocument: (text: string) => void
   replaceSelection: (text: string) => void
   insertAtCursor: (text: string) => void
   appendToDocument: (text: string) => void
@@ -48,6 +50,9 @@ export const EditorPane = forwardRef<EditorApi, EditorPaneProps>(function Editor
   const cmRef = useRef<ReactCodeMirrorRef | null>(null)
 
   useImperativeHandle(ref, () => ({
+    getContent() {
+      return cmRef.current?.view?.state.doc.toString() ?? content
+    },
     getSelection() {
       const view = cmRef.current?.view
       if (!view) return ''
@@ -59,6 +64,16 @@ export const EditorPane = forwardRef<EditorApi, EditorPaneProps>(function Editor
       if (!view) return false
       const { from, to } = view.state.selection.main
       return from !== to
+    },
+    replaceDocument(text: string) {
+      const view = cmRef.current?.view
+      if (!view) return
+      view.dispatch({
+        changes: { from: 0, to: view.state.doc.length, insert: text },
+        selection: { anchor: Math.min(text.length, 0) },
+        scrollIntoView: true,
+      })
+      view.focus()
     },
     replaceSelection(text: string) {
       const view = cmRef.current?.view
