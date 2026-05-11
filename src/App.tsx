@@ -823,7 +823,7 @@ function App() {
       <header className="app-bar">
         <Toolbar
           busy={isBusy}
-          onOpenWorkspace={() => void handleOpenWorkspace()}
+          onOpenFile={() => void handleOpenDocument()}
           onCreateNote={() => void handleCreateNote()}
           onCreateFolder={() => void handleCreateFolder()}
           onAddFolder={() => void handleOpenWorkspace()}

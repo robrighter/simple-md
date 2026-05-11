@@ -15,7 +15,10 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 $RepoRoot = Split-Path $PSScriptRoot -Parent
-$RustTarget = "x86_64-pc-windows-msvc"
+$RustTarget = if ($env:CARGO_BUILD_TARGET) { $env:CARGO_BUILD_TARGET } else {
+    $arch = (rustc -Vv 2>$null | Select-String "host:").ToString().Split(":")[1].Trim()
+    $arch
+}
 $DestDir = Join-Path $RepoRoot "src-tauri\binaries"
 $Dest = Join-Path $DestDir "llama-server-$RustTarget.exe"
 
@@ -24,7 +27,8 @@ if ((Test-Path $Dest) -and -not $Force) {
     return
 }
 
-$Asset = "llama-$LlamaVersion-bin-win-cpu-x64.zip"
+$WinArch = if ($RustTarget -like "aarch64*") { "arm64" } else { "x64" }
+$Asset = "llama-$LlamaVersion-bin-win-cpu-$WinArch.zip"
 $Url = "https://github.com/ggml-org/llama.cpp/releases/download/$LlamaVersion/$Asset"
 
 New-Item -ItemType Directory -Force -Path $DestDir | Out-Null

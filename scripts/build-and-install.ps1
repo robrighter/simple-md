@@ -15,8 +15,12 @@ try {
         if ($LASTEXITCODE -ne 0) { Write-Error "npm install failed." }
     }
 
+    # Detect host target triple
+    $RustTarget = (rustc -Vv 2>$null | Select-String "host:").ToString().Split(":")[1].Trim()
+    Write-Host "Building for target: $RustTarget" -ForegroundColor DarkGray
+
     # Fetch the llama-server sidecar if missing (required by Tauri's externalBin)
-    $Sidecar = "src-tauri\binaries\llama-server-x86_64-pc-windows-msvc.exe"
+    $Sidecar = "src-tauri\binaries\llama-server-$RustTarget.exe"
     if (-not (Test-Path $Sidecar)) {
         Write-Host "Fetching llama-server sidecar..." -ForegroundColor Cyan
         & "$PSScriptRoot\fetch-llama-server.ps1"
@@ -29,7 +33,7 @@ try {
     }
 
     Write-Host "Building Simple MD release..." -ForegroundColor Cyan
-    & $TauriCmd build --target x86_64-pc-windows-msvc
+    & $TauriCmd build --target $RustTarget
     if ($LASTEXITCODE -ne 0) { Write-Error "tauri build failed with exit code $LASTEXITCODE." }
 } finally {
     Pop-Location
@@ -37,7 +41,7 @@ try {
 
 # Prefer the NSIS .exe installer; fall back to MSI.
 # With --target the output lands under target\<triple>\release\bundle.
-$BundleRoot = Join-Path $RepoRoot "src-tauri\target\x86_64-pc-windows-msvc\release\bundle"
+$BundleRoot = Join-Path $RepoRoot "src-tauri\target\$RustTarget\release\bundle"
 $Installer = Get-ChildItem "$BundleRoot\nsis\*.exe" -ErrorAction SilentlyContinue |
     Sort-Object LastWriteTime -Descending |
     Select-Object -First 1

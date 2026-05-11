@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react'
 
 type ToolbarProps = {
   busy: boolean
-  onOpenWorkspace: () => void
+  onOpenFile: () => void
   onCreateNote: () => void
   onCreateFolder: () => void
   onAddFolder: () => void
@@ -23,7 +23,7 @@ const editItems: Array<{ command: EditCommand; label: string; shortcut: string }
 
 export function Toolbar({
   busy,
-  onOpenWorkspace,
+  onOpenFile,
   onCreateNote,
   onCreateFolder,
   onAddFolder,
@@ -83,7 +83,7 @@ export function Toolbar({
         )}
       </Menu>
 
-      <button type="button" onClick={onOpenWorkspace} disabled={busy} title="Open a folder workspace">
+      <button type="button" onClick={onOpenFile} disabled={busy} title="Open a Markdown file">
         Open
       </button>
       <button type="button" onClick={onSave} disabled={busy} title="Save (⌘S)">
