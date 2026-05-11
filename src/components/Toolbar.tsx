@@ -7,6 +7,7 @@ type ToolbarProps = {
   onCreateFolder: () => void
   onOpenFolder: () => void
   onSave: () => void
+  onSaveAs: () => void
   onImportUrl: () => void
 }
 
@@ -28,6 +29,7 @@ export function Toolbar({
   onCreateFolder,
   onOpenFolder,
   onSave,
+  onSaveAs,
   onImportUrl,
 }: ToolbarProps) {
   return (
@@ -98,9 +100,30 @@ export function Toolbar({
         )}
       </Menu>
 
-      <button type="button" onClick={onSave} disabled={busy} title="Save (⌘S)">
-        Save
-      </button>
+      <Menu label="Save ▾" disabled={busy}>
+        {(close) => (
+          <>
+            <MenuItem
+              shortcut="⌘S"
+              onSelect={() => {
+                close()
+                onSave()
+              }}
+            >
+              Save
+            </MenuItem>
+            <MenuItem
+              shortcut="⇧⌘S"
+              onSelect={() => {
+                close()
+                onSaveAs()
+              }}
+            >
+              Save as…
+            </MenuItem>
+          </>
+        )}
+      </Menu>
       <button type="button" onClick={onImportUrl} disabled={busy} title="Import Markdown from a URL">
         Import…
       </button>
@@ -110,10 +133,11 @@ export function Toolbar({
 
 type MenuProps = {
   label: string
+  disabled?: boolean
   children: (close: () => void) => ReactNode
 }
 
-function Menu({ label, children }: MenuProps) {
+function Menu({ label, disabled = false, children }: MenuProps) {
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement | null>(null)
 
@@ -143,6 +167,7 @@ function Menu({ label, children }: MenuProps) {
         type="button"
         aria-haspopup="menu"
         aria-expanded={open}
+        disabled={disabled}
         onClick={() => setOpen((value) => !value)}
       >
         {label}

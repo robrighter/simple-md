@@ -32,6 +32,7 @@ import type {
   WorkspaceSnapshot,
 } from './app/types'
 import {
+  chooseFolderDialog,
   createFolder,
   createNote,
   deletePath,
@@ -482,6 +483,12 @@ function App() {
     }
   }
 
+  async function handleOpenDroppedMarkdownFiles(paths: string[]) {
+    for (const path of paths) {
+      await handleOpenDocument(path)
+    }
+  }
+
   function handleContentChange(content: string) {
     if (!activeDocument) {
       return
@@ -507,97 +514,44 @@ function App() {
       return
     }
 
+    if (!activeDocument.path) {
+      await handleSaveAsDocument()
+      return
+    }
+
     try {
       setIsBusy(true)
 
-      if (activeDocument.path) {
-        if (activeDocument.externalChange) {
-          setLastMessage('Choose reload or overwrite before saving this file.')
-          return
-        }
-
-        const saved = await saveDocument(
-          activeDocument.path,
-          activeDocument.content,
-          activeDocument.savedVersion,
-        )
-        updateDocument(activeDocument.id, (document) => ({
-          ...document,
-          title: saved.name,
-          content: saved.content,
-          isDirty: false,
-          savedVersion: saved.version,
-          externalChange: undefined,
-        }))
-
-        const workspacePath = findOwningWorkspace(saved.path, workspaces)
-
-        if (workspacePath) {
-          await refreshWorkspace(workspacePath)
-        }
-
-        setRecents((current) => ({
-          ...current,
-          files: pushRecent(current.files, saved.path),
-        }))
-        setLastMessage(`Saved ${saved.name}.`)
+      if (activeDocument.externalChange) {
+        setLastMessage('Choose reload or overwrite before saving this file.')
         return
       }
 
-      const initialTargetDirectory = resolveTargetDirectory(
-        selectedTreePath,
-        workspaces,
-        activeDocument,
+      const saved = await saveDocument(
+        activeDocument.path,
+        activeDocument.content,
+        activeDocument.savedVersion,
       )
-
-      if (!initialTargetDirectory) {
-        setLastMessage('Open a folder before saving a new document.')
-        return
-      }
-
-      const result = await dialog.fileLocationPrompt({
-        title: 'Save as',
-        defaultName: `${createDraftTitle(activeDocument.content)}.md`,
-        defaultFolder: initialTargetDirectory,
-        okLabel: 'Save',
-      })
-      const requestedName = result?.name.trim() ?? ''
-      const targetDirectory = result?.folder.trim() ?? ''
-
-      if (!requestedName || !targetDirectory) {
-        return
-      }
-
-      const created = await createNote(targetDirectory, requestedName, activeDocument.content)
-      const workspacePath = findOwningWorkspace(created.path, workspaces)
-
-      setDocuments((current) =>
-        current.map((document) =>
-          document.id === activeDocument.id
-            ? {
-                ...document,
-                id: created.path,
-                path: created.path,
-                title: created.name,
-                isDirty: false,
-                savedVersion: created.version,
-                workspacePath,
-              }
-            : document,
-        ),
-      )
-      setActiveDocumentId(created.path)
-      setSelectedTreePath(created.path)
-      setRecents((current) => ({
-        ...current,
-        files: pushRecent(current.files, created.path),
+      updateDocument(activeDocument.id, (document) => ({
+        ...document,
+        title: saved.name,
+        content: saved.content,
+        isDirty: false,
+        savedVersion: saved.version,
+        externalChange: undefined,
       }))
+
+      const workspacePath = findOwningWorkspace(saved.path, workspaces)
 
       if (workspacePath) {
         await refreshWorkspace(workspacePath)
       }
 
-      setLastMessage(`Saved ${created.name}.`)
+      setRecents((current) => ({
+        ...current,
+        files: pushRecent(current.files, saved.path),
+      }))
+      setLastMessage(`Saved ${saved.name}.`)
     } catch (error) {
       const message = getErrorMessage(error, 'Unable to save the current document.')
 
@@ -620,6 +574,84 @@ function App() {
       }
 
       setLastMessage(message)
+    } finally {
+      setIsBusy(false)
+    }
+  }
+
+  async function handleSaveAsDocument() {
+    if (!activeDocument) {
+      return
+    }
+
+    let initialTargetDirectory: string | null = resolveTargetDirectory(
+      selectedTreePath,
+      workspaces,
+      activeDocument,
+    )
+
+    if (!initialTargetDirectory) {
+      try {
+        initialTargetDirectory = await chooseFolderDialog('Choose Folder for Saved File')
+      } catch (error) {
+        setLastMessage(getErrorMessage(error, 'Choose a folder before saving this document.'))
+        return
+      }
+    }
+
+    if (!initialTargetDirectory) {
+      return
+    }
+
+    const result = await dialog.fileLocationPrompt({
+      title: 'Save as',
+      defaultName: getDefaultSaveAsName(activeDocument),
+      defaultFolder: initialTargetDirectory,
+      okLabel: 'Save',
+    })
+    const requestedName = result?.name.trim() ?? ''
+    const targetDirectory = result?.folder.trim() ?? ''
+
+    if (!requestedName || !targetDirectory) {
+      return
+    }
+
+    try {
+      setIsBusy(true)
+      const created = await createNote(targetDirectory, requestedName, activeDocument.content)
+      const workspacePath = findOwningWorkspace(created.path, workspaces)
+
+      setDocuments((current) =>
+        current.map((document) =>
+          document.id === activeDocument.id
+            ? {
+                ...document,
+                id: created.path,
+                path: created.path,
+                title: created.name,
+                content: created.content,
+                isDirty: false,
+                savedVersion: created.version,
+                externalChange: undefined,
+                workspacePath,
+              }
+            : document,
+        ),
+      )
+      setActiveDocumentId(created.path)
+      setSelectedTreePath(created.path)
+      setRecents((current) => ({
+        ...current,
+        files: pushRecent(current.files, created.path),
+      }))
+
+      if (workspacePath) {
+        await refreshWorkspace(workspacePath)
+      }
+
+      setLastMessage(`Saved ${created.name}.`)
+    } catch (error) {
+      setLastMessage(getErrorMessage(error, 'Unable to save the current document.'))
     } finally {
       setIsBusy(false)
     }
@@ -1097,6 +1129,7 @@ function App() {
           onCreateFolder={() => void handleCreateFolder()}
           onOpenFolder={() => void handleOpenWorkspace()}
           onSave={() => void handleSaveDocument()}
+          onSaveAs={() => void handleSaveAsDocument()}
           onImportUrl={() => void handleImportUrl()}
         />
         <div className="app-bar__right">
@@ -1166,6 +1199,7 @@ function App() {
           onActivate={setActiveDocumentId}
           onClose={(documentId) => void handleCloseDocument(documentId)}
           onRename={(documentId, nextName) => void handleRenameDocumentTab(documentId, nextName)}
+          onOpenDroppedFiles={(paths) => void handleOpenDroppedMarkdownFiles(paths)}
           onNew={handleCreateScratchpad}
         />
 
@@ -1327,6 +1361,18 @@ function resolveTargetDirectory(
   }
 
   return workspaces[0]?.path ?? null
+}
+
+function getDefaultSaveAsName(document: OpenDocument) {
+  if (document.path) {
+    return fileNameFromPath(document.path)
+  }
+
+  if (document.title && document.title !== 'Untitled Draft') {
+    return normalizeTabFileName(document.title, 'untitled.md')
+  }
+
+  return `${createDraftTitle(document.content)}.md`
 }
 
 function normalizeTabFileName(nextName: string, currentName: string) {

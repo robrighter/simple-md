@@ -169,6 +169,7 @@ pre {
   display: flex;
   align-items: center;
   gap: 16px;
+  min-width: 0;
   padding: 6px 14px;
   background: linear-gradient(180deg, #443731 0%, #36291f 100%);
   color: #f3e5cf;
@@ -183,11 +184,18 @@ pre {
   display: flex;
   align-items: center;
   gap: 10px;
+  min-width: 0;
+  flex: 0 1 auto;
 }
 
 .toolbar {
   display: flex;
+  flex: 1 1 auto;
+  flex-wrap: wrap;
   gap: 2px;
+  max-width: 100%;
+  min-width: 0;
+  overflow: visible;
 }
 
 .toolbar button,
@@ -293,18 +301,28 @@ pre {
 /* ───── tab strip ───── */
 
 .tab-strip {
+  position: relative;
   display: flex;
   gap: 2px;
   align-items: stretch;
-  overflow-x: auto;
+  min-width: 0;
+  overflow: hidden;
   padding: 6px 8px 0;
   background: rgba(236, 227, 210, 0.45);
   border-bottom: 1px solid var(--border);
+  scrollbar-width: none;
+}
+
+.tab-strip::-webkit-scrollbar {
+  display: none;
 }
 
 .tab-strip__item {
   display: inline-flex;
   align-items: center;
+  min-width: 0;
+  max-width: 240px;
+  flex: 0 1 auto;
   border: 1px solid var(--border);
   border-bottom: 0;
   border-top: 3px solid transparent;
@@ -331,7 +349,9 @@ pre {
 }
 
 .tab-strip__item[data-editing='true'] {
+  flex: 0 0 220px;
   min-width: 180px;
+  max-width: 260px;
 }
 
 .tab-strip__item:hover:not([data-active='true']) {
@@ -343,13 +363,14 @@ pre {
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  min-width: 0;
   padding: 7px 6px 7px 12px;
   background: transparent;
   border: 0;
   color: inherit;
   font: inherit;
   white-space: nowrap;
-  max-width: 220px;
+  max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
 }
@@ -379,6 +400,7 @@ pre {
 }
 
 .tab-strip__activate > span:not(.tab-strip__dirty) {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
 }
@@ -389,6 +411,7 @@ pre {
 }
 
 .tab-strip__close {
+  flex: 0 0 auto;
   background: transparent;
   border: 0;
   color: inherit;
@@ -405,6 +428,7 @@ pre {
 }
 
 .tab-strip__new {
+  flex: 0 0 auto;
   background: transparent;
   border: 0;
   color: var(--ink-muted);
@@ -419,6 +443,26 @@ pre {
 .tab-strip__new:hover {
   background: var(--panel-strong);
   color: var(--ink);
+}
+
+.tab-strip__drop-target {
+  align-self: stretch;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 150px;
+  margin-bottom: -1px;
+  border: 1px dashed rgba(122, 31, 43, 0.65);
+  border-bottom: 0;
+  border-top: 3px solid var(--accent);
+  border-top-left-radius: var(--radius-md);
+  border-top-right-radius: var(--radius-md);
+  background: rgba(122, 31, 43, 0.10);
+  color: var(--accent);
+  font-size: 13px;
+  font-weight: 700;
+  white-space: nowrap;
+  pointer-events: none;
 }
 
 /* ───── workspace frame (the document!) ───── */
