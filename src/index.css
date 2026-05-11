@@ -664,21 +664,40 @@ pre {
   height: 100%;
   background: var(--panel);
   overflow: auto;
+  padding: 24px 32px;
 }
 
 .hybrid-shell .milkdown {
+  --crepe-color-background: transparent;
+  --crepe-color-on-background: var(--ink);
+  --crepe-color-surface: var(--panel-muted);
+  --crepe-color-surface-low: #f2ebdd;
+  --crepe-color-on-surface: var(--ink);
+  --crepe-color-on-surface-variant: var(--ink-soft);
+  --crepe-color-outline: var(--border);
+  --crepe-color-primary: var(--accent);
+  --crepe-color-secondary: var(--gold);
+  --crepe-color-on-secondary: var(--ink);
+  --crepe-color-inline-code: var(--accent);
+  --crepe-color-hover: rgba(122, 31, 43, 0.08);
+  --crepe-color-selected: rgba(209, 164, 75, 0.34);
+  --crepe-color-inline-area: #eadfcf;
+  --crepe-font-title: var(--font-ui);
+  --crepe-font-default: var(--font-copy);
+  --crepe-font-code: var(--font-mono);
   max-width: 760px;
   margin: 0 auto;
-  padding: 24px 32px;
   font-family: var(--font-copy);
   font-size: 16px;
   line-height: 1.7;
   color: var(--ink);
+  background: transparent;
 }
 
 .hybrid-shell .milkdown .ProseMirror {
   outline: none;
   min-height: 100%;
+  padding: 0;
 }
 
 .hybrid-shell .milkdown .ProseMirror h1,
@@ -686,6 +705,7 @@ pre {
 .hybrid-shell .milkdown .ProseMirror h3,
 .hybrid-shell .milkdown .ProseMirror h4 {
   font-family: var(--font-ui);
+  font-weight: 700;
   letter-spacing: -0.02em;
   line-height: 1.2;
 }
@@ -698,6 +718,41 @@ pre {
 .hybrid-shell .milkdown .ProseMirror h2 {
   font-size: 1.35rem;
   margin-top: 1.6rem;
+}
+
+.hybrid-shell .milkdown .ProseMirror p {
+  padding: 0;
+  margin: 1rem 0;
+  font-size: 16px;
+  line-height: 1.7;
+}
+
+.hybrid-shell .milkdown .ProseMirror p,
+.hybrid-shell .milkdown .ProseMirror li,
+.hybrid-shell .milkdown .ProseMirror blockquote {
+  color: #46392a;
+}
+
+.hybrid-shell .milkdown .ProseMirror li p {
+  margin: 0;
+}
+
+.hybrid-shell .milkdown .milkdown-list-item-block {
+  margin: 0.2rem 0;
+}
+
+.hybrid-shell .milkdown .milkdown-list-item-block li {
+  gap: 8px;
+}
+
+.hybrid-shell .milkdown .milkdown-list-item-block li .label-wrapper {
+  color: #8d806e;
+  height: 1.7em;
+}
+
+.hybrid-shell .milkdown .milkdown-list-item-block li .label-wrapper .label {
+  height: 1.7em;
+  padding: 0;
 }
 
 .hybrid-shell .milkdown .ProseMirror code {
@@ -713,6 +768,7 @@ pre {
   padding: 12px 14px;
   border-radius: var(--radius-md);
   overflow: auto;
+  margin: 1rem 0;
 }
 
 .hybrid-shell .milkdown .ProseMirror blockquote {
@@ -720,6 +776,16 @@ pre {
   padding-left: 14px;
   border-left: 3px solid var(--gold);
   color: #46392a;
+}
+
+.hybrid-shell .milkdown .ProseMirror blockquote::before {
+  content: none;
+}
+
+.hybrid-shell .milkdown .ProseMirror ul,
+.hybrid-shell .milkdown .ProseMirror ol {
+  padding-left: 1.5rem;
+  margin: 1rem 0;
 }
 
 .hybrid-shell .milkdown .ProseMirror table {
