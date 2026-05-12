@@ -57,6 +57,18 @@ export async function saveDocument(path: string, content: string, expectedVersio
   return invoke<DocumentPayload>('save_document', { path, content, expectedVersion })
 }
 
+export async function exportDocument(parentDir: string, name: string, content: string) {
+  return invoke<string>('export_document', {
+    parentDir: String(parentDir ?? ''),
+    name: String(name ?? ''),
+    content,
+  })
+}
+
+export async function printHtmlDocument(html: string) {
+  return invoke<void>('print_html_document', { html })
+}
+
 export async function createNote(parentDir: string, name: string, initialContent?: string) {
   return invoke<DocumentPayload>('create_note', {
     parentDir: String(parentDir ?? ''),

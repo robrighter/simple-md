@@ -4,13 +4,17 @@ use std::{
     fs,
     path::{Path, PathBuf},
     sync::Mutex,
-    time::{Duration, UNIX_EPOCH},
+    time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
 use anyhow::Context;
 use reqwest::{header, redirect::Policy, Client};
 use serde::Serialize;
-use tauri::{Emitter, Manager, State};
+use tauri::{
+    webview::{PageLoadEvent, WebviewWindowBuilder},
+    utils::config::WebviewUrl,
+    AppHandle, Emitter, Manager, State,
+};
 use url::Url;
 
 use ai::AiState;
@@ -123,6 +127,68 @@ fn save_document(
         content,
         version: document_version(&target).map_err(error_to_string)?,
     })
+}
+
+#[tauri::command]
+fn export_document(parent_dir: String, name: String, content: String) -> Result<String, String> {
+    let parent = PathBuf::from(&parent_dir);
+
+    if !parent.exists() || !parent.is_dir() {
+        return Err("The target folder does not exist.".into());
+    }
+
+    let export_name = validate_leaf_name(name.trim(), "export file")?;
+    let target = parent.join(export_name);
+
+    if target.exists() {
+        return Err("A file with that name already exists.".into());
+    }
+
+    fs::write(&target, content)
+        .with_context(|| format!("Failed to export {}", normalize_path(&target)))
+        .map_err(error_to_string)?;
+
+    Ok(normalize_path(&target))
+}
+
+#[tauri::command]
+fn print_html_document(app: AppHandle, html: String) -> Result<(), String> {
+    let timestamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(error_to_string)?
+        .as_millis();
+    let label = format!("pdf-export-{timestamp}");
+    let print_path = std::env::temp_dir().join(format!("simple-md-print-{timestamp}.html"));
+
+    fs::write(&print_path, html)
+        .with_context(|| format!("Failed to stage {}", normalize_path(&print_path)))
+        .map_err(error_to_string)?;
+
+    let print_url = Url::from_file_path(&print_path)
+        .map_err(|_| "Failed to prepare the print document URL.".to_string())?;
+    let cleanup_path = print_path.clone();
+
+    WebviewWindowBuilder::new(&app, label, WebviewUrl::External(print_url))
+        .title("Simple MD - Export")
+        .visible(false)
+        .on_page_load(move |window, payload| {
+            if matches!(payload.event(), PageLoadEvent::Finished) {
+                let _ = window.hide();
+                let _ = window.print();
+                let cleanup_window = window.clone();
+                let cleanup_path = cleanup_path.clone();
+
+                tauri::async_runtime::spawn(async move {
+                    tokio::time::sleep(Duration::from_secs(90)).await;
+                    let _ = cleanup_window.close();
+                    let _ = fs::remove_file(cleanup_path);
+                });
+            }
+        })
+        .build()
+        .map_err(error_to_string)?;
+
+    Ok(())
 }
 
 #[tauri::command]
@@ -319,6 +385,8 @@ pub fn run() {
             list_workspace,
             open_document,
             save_document,
+            export_document,
+            print_html_document,
             create_note,
             create_folder,
             rename_path,

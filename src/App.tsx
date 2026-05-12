@@ -36,6 +36,7 @@ import {
   createFolder,
   createNote,
   deletePath,
+  exportDocument,
   fetchRemoteMarkdown,
   listWorkspace,
   listenForOpenedTargets,
@@ -44,6 +45,7 @@ import {
   openPathExternally,
   openWorkspaceDialog,
   openedTargets,
+  printHtmlDocument,
   renamePath,
   saveDocument,
 } from './lib/desktop'
@@ -57,6 +59,7 @@ import {
   normalizeOpenedTarget,
   replacePathPrefix,
 } from './lib/document'
+import { createExportHtml } from './lib/export'
 
 const RECENTS_KEY = 'simple-md-recents'
 const EXTERNAL_CHANGE_CHECK_INTERVAL_MS = 4000
@@ -657,6 +660,81 @@ function App() {
     }
   }
 
+  async function handleExportDocument(format: 'html' | 'text') {
+    if (!activeDocument) {
+      return
+    }
+
+    let targetDirectory: string | null = resolveTargetDirectory(
+      selectedTreePath,
+      workspaces,
+      activeDocument,
+    )
+
+    if (!targetDirectory) {
+      try {
+        targetDirectory = await chooseFolderDialog('Choose Folder for Export')
+      } catch (error) {
+        setLastMessage(getErrorMessage(error, 'Choose a folder before exporting this document.'))
+        return
+      }
+    }
+
+    if (!targetDirectory) {
+      return
+    }
+
+    const result = await dialog.fileLocationPrompt({
+      title: format === 'html' ? 'Export as HTML' : 'Export as Text',
+      defaultName: getDefaultExportName(activeDocument, format),
+      defaultFolder: targetDirectory,
+      okLabel: 'Export',
+    })
+    const requestedName = result?.name.trim() ?? ''
+    const targetFolder = result?.folder.trim() ?? ''
+
+    if (!requestedName || !targetFolder) {
+      return
+    }
+
+    const exportName = ensureExportExtension(requestedName, format)
+    try {
+      setIsBusy(true)
+      const exportContent =
+        format === 'html'
+          ? await createExportHtml({
+              title: activeDocument.title || createDraftTitle(activeDocument.content),
+              content: activeDocument.content,
+              baseUrl: activeDocument.path,
+            })
+          : activeDocument.content
+      await exportDocument(targetFolder, exportName, exportContent)
+      setLastMessage(`Exported ${exportName}.`)
+    } catch (error) {
+      setLastMessage(getErrorMessage(error, 'Unable to export the current document.'))
+    } finally {
+      setIsBusy(false)
+    }
+  }
+
+  async function handleExportPdf() {
+    if (!activeDocument) {
+      return
+    }
+
+    try {
+      const html = await createExportHtml({
+        title: activeDocument.title || createDraftTitle(activeDocument.content),
+        content: activeDocument.content,
+        baseUrl: activeDocument.path,
+      })
+      await printHtmlDocument(html)
+      setLastMessage('Opened PDF export preview. Choose Save as PDF in the print dialog.')
+    } catch (error) {
+      setLastMessage(getErrorMessage(error, 'Unable to open PDF export.'))
+    }
+  }
+
   async function handleReloadExternalChange(documentId: string) {
     const target = documents.find((document) => document.id === documentId)
 
@@ -1130,6 +1208,9 @@ function App() {
           onOpenFolder={() => void handleOpenWorkspace()}
           onSave={() => void handleSaveDocument()}
           onSaveAs={() => void handleSaveAsDocument()}
+          onExportHtml={() => void handleExportDocument('html')}
+          onExportPdf={() => void handleExportPdf()}
+          onExportText={() => void handleExportDocument('text')}
           onImportUrl={() => void handleImportUrl()}
         />
         <div className="app-bar__right">
@@ -1373,6 +1454,39 @@ function getDefaultSaveAsName(document: OpenDocument) {
   }
 
   return `${createDraftTitle(document.content)}.md`
+}
+
+function getDefaultExportName(document: OpenDocument, format: 'html' | 'text') {
+  const extension = format === 'html' ? 'html' : 'txt'
+  const fallbackStem = createDraftTitle(document.content)
+
+  if (document.path) {
+    return replaceFileExtension(fileNameFromPath(document.path), extension)
+  }
+
+  if (document.title && document.title !== 'Untitled Draft') {
+    return replaceFileExtension(normalizeTabFileName(document.title, `${fallbackStem}.md`), extension)
+  }
+
+  return `${fallbackStem}.${extension}`
+}
+
+function ensureExportExtension(name: string, format: 'html' | 'text') {
+  const expectedExtension = format === 'html' ? '.html' : '.txt'
+
+  if (name.toLowerCase().endsWith(expectedExtension)) {
+    return name
+  }
+
+  return `${name}${expectedExtension}`
+}
+
+function replaceFileExtension(name: string, extension: string) {
+  const trimmedName = name.trim()
+  const lastDot = trimmedName.lastIndexOf('.')
+  const stem = lastDot > 0 ? trimmedName.slice(0, lastDot) : trimmedName
+
+  return `${stem || 'export'}.${extension}`
 }
 
 function normalizeTabFileName(nextName: string, currentName: string) {

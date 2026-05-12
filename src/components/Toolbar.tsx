@@ -8,6 +8,9 @@ type ToolbarProps = {
   onOpenFolder: () => void
   onSave: () => void
   onSaveAs: () => void
+  onExportHtml: () => void
+  onExportPdf: () => void
+  onExportText: () => void
   onImportUrl: () => void
 }
 
@@ -30,6 +33,9 @@ export function Toolbar({
   onOpenFolder,
   onSave,
   onSaveAs,
+  onExportHtml,
+  onExportPdf,
+  onExportText,
   onImportUrl,
 }: ToolbarProps) {
   return (
@@ -120,6 +126,36 @@ export function Toolbar({
               }}
             >
               Save as…
+            </MenuItem>
+          </>
+        )}
+      </Menu>
+      <Menu label="Export ▾" disabled={busy}>
+        {(close) => (
+          <>
+            <MenuItem
+              onSelect={() => {
+                close()
+                onExportHtml()
+              }}
+            >
+              Export as HTML…
+            </MenuItem>
+            <MenuItem
+              onSelect={() => {
+                close()
+                onExportPdf()
+              }}
+            >
+              Export as PDF…
+            </MenuItem>
+            <MenuItem
+              onSelect={() => {
+                close()
+                onExportText()
+              }}
+            >
+              Export as Text…
             </MenuItem>
           </>
         )}

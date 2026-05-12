@@ -553,15 +553,27 @@ pre {
   overflow: hidden;
 }
 
+.editor-shell > div,
+.editor-shell .cm-theme {
+  flex: 1 1 auto;
+  min-height: 0;
+  height: 100%;
+}
+
 .editor-shell .cm-editor {
+  flex: 1 1 auto;
+  min-height: 0;
   height: 100%;
   font-size: 14px;
+  overflow: hidden;
 }
 
 .editor-shell .cm-scroller {
   font-family: var(--font-mono);
   line-height: 1.6;
   padding: 14px 0;
+  min-height: 0;
+  overflow: auto;
 }
 
 .preview-shell {
@@ -654,9 +666,12 @@ pre {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   height: 100%;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .split-layout > .editor-shell {
+  min-width: 0;
   border-right: 1px solid var(--border);
 }
 

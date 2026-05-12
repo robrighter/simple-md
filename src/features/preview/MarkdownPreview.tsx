@@ -13,6 +13,7 @@ type MarkdownPreviewProps = {
   baseUrl?: string
   className?: string
   banner?: ReactNode
+  staticCharts?: boolean
 }
 
 type MarkdownPreProps = ComponentPropsWithoutRef<'pre'> & {
@@ -32,6 +33,7 @@ export function MarkdownPreview({
   baseUrl,
   className,
   banner,
+  staticCharts = false,
 }: MarkdownPreviewProps) {
   return (
     <section className={['preview-shell', className].filter(Boolean).join(' ')}>
@@ -48,7 +50,7 @@ export function MarkdownPreview({
                 const rawSpec = String(children).replace(/\n$/, '')
 
                 if (language === 'chart') {
-                  return <InlineChart rawSpec={rawSpec} />
+                  return <InlineChart rawSpec={rawSpec} staticRender={staticCharts} />
                 }
 
                 return (
