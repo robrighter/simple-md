@@ -12,6 +12,7 @@
     "tauri:dev": "tauri dev",
     "tauri:build": "tauri build",
     "ai:fetch-sidecar": "bash scripts/fetch-llama-server.sh",
+    "ai:fetch-sidecar:win": "powershell -ExecutionPolicy Bypass -File scripts/fetch-llama-server.ps1",
     "icons:rebuild": "bash scripts/rebuild-icons.sh"
   },
   "dependencies": {
