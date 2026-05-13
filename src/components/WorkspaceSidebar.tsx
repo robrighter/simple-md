@@ -13,6 +13,8 @@ type WorkspaceSidebarProps = {
   onSelectPath: (path: string) => void
   onOpenWorkspace: () => void
   onOpenRecentPath: (path: string) => void | Promise<void>
+  onCreateNote: (path: string) => void
+  onCreateFolder: (path: string) => void
   onRename: (path: string) => void
   onDelete: (path: string) => void
 }
@@ -32,6 +34,8 @@ export function WorkspaceSidebar({
   onSelectPath,
   onOpenWorkspace,
   onOpenRecentPath,
+  onCreateNote,
+  onCreateFolder,
   onRename,
   onDelete,
 }: WorkspaceSidebarProps) {
@@ -140,6 +144,26 @@ export function WorkspaceSidebar({
           style={{ top: menu.y, left: menu.x }}
           onMouseDown={(event) => event.stopPropagation()}
         >
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => {
+              onCreateNote(menu.path)
+              setMenu(null)
+            }}
+          >
+            New note
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => {
+              onCreateFolder(menu.path)
+              setMenu(null)
+            }}
+          >
+            New folder
+          </button>
           {!menu.isWorkspaceRoot && (
             <button
               type="button"

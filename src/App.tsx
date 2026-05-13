@@ -490,8 +490,8 @@ function App() {
     }
   }
 
-  async function handleCreateNote() {
-    const targetDirectory = resolveTargetDirectory(selectedTreePath, workspaces, activeDocument)
+  async function handleCreateNote(targetPath = selectedTreePath) {
+    const targetDirectory = resolveTargetDirectory(targetPath, workspaces, activeDocument)
 
     if (!targetDirectory) {
       setLastMessage('Open a folder before creating a note.')
@@ -540,8 +540,8 @@ function App() {
     }
   }
 
-  async function handleCreateFolder() {
-    const targetDirectory = resolveTargetDirectory(selectedTreePath, workspaces, activeDocument)
+  async function handleCreateFolder(targetPath = selectedTreePath) {
+    const targetDirectory = resolveTargetDirectory(targetPath, workspaces, activeDocument)
 
     if (!targetDirectory) {
       setLastMessage('Open a folder before creating a subfolder.')
@@ -576,18 +576,18 @@ function App() {
     }
   }
 
-  async function handleRenameSelection() {
-    if (!selectedTreePath) {
+  async function handleRenameSelection(targetPath = selectedTreePath) {
+    if (!targetPath) {
       setLastMessage('Pick a file or folder in the sidebar first.')
       return
     }
 
-    if (isWorkspaceRootPath(selectedTreePath, workspaces)) {
+    if (isWorkspaceRootPath(targetPath, workspaces)) {
       setLastMessage('Workspace root folders can be removed from the app, but not renamed here.')
       return
     }
 
-    const currentName = fileNameFromPath(selectedTreePath)
+    const currentName = fileNameFromPath(targetPath)
     const result = await dialog.prompt({
       title: 'Rename',
       defaultValue: currentName,
@@ -600,7 +600,7 @@ function App() {
 
     try {
       setIsBusy(true)
-      const nextPath = await renamePath(selectedTreePath, requestedName)
+      const nextPath = await renamePath(targetPath, requestedName)
       const workspacePath = findOwningWorkspace(nextPath, workspaces)
 
       if (workspacePath) {
@@ -609,11 +609,11 @@ function App() {
 
       setDocuments((current) =>
         current.map((document) => {
-          if (!document.path || !isSameOrChildPath(document.path, selectedTreePath)) {
+          if (!document.path || !isSameOrChildPath(document.path, targetPath)) {
             return document
           }
 
-          const updatedPath = replacePathPrefix(document.path, selectedTreePath, nextPath)
+          const updatedPath = replacePathPrefix(document.path, targetPath, nextPath)
 
           return {
             ...document,
@@ -628,8 +628,8 @@ function App() {
         }),
       )
 
-      if (activeDocumentId && isSameOrChildPath(activeDocumentId, selectedTreePath)) {
-        setActiveDocumentId(replacePathPrefix(activeDocumentId, selectedTreePath, nextPath))
+      if (activeDocumentId && isSameOrChildPath(activeDocumentId, targetPath)) {
+        setActiveDocumentId(replacePathPrefix(activeDocumentId, targetPath, nextPath))
       }
 
       setSelectedTreePath(nextPath)
@@ -641,16 +641,16 @@ function App() {
     }
   }
 
-  async function handleDeleteSelection() {
-    if (!selectedTreePath) {
+  async function handleDeleteSelection(targetPath = selectedTreePath) {
+    if (!targetPath) {
       setLastMessage('Pick a file or folder in the sidebar first.')
       return
     }
 
-    if (isWorkspaceRootPath(selectedTreePath, workspaces)) {
+    if (isWorkspaceRootPath(targetPath, workspaces)) {
       const confirmedWorkspaceRemoval = await dialog.confirm({
         title: 'Remove from sidebar?',
-        message: `${fileNameFromPath(selectedTreePath)} will be removed from the sidebar but won't be deleted from disk.`,
+        message: `${fileNameFromPath(targetPath)} will be removed from the sidebar but won't be deleted from disk.`,
         okLabel: 'Remove',
       })
 
@@ -659,11 +659,11 @@ function App() {
       }
 
       setWorkspaces((current) =>
-        current.filter((workspace) => workspace.path !== selectedTreePath),
+        current.filter((workspace) => workspace.path !== targetPath),
       )
       setDocuments((current) =>
         current.map((document) =>
-          document.workspacePath === selectedTreePath
+          document.workspacePath === targetPath
             ? {
                 ...document,
                 workspacePath: undefined,
@@ -677,7 +677,7 @@ function App() {
     }
 
     const confirmed = await dialog.confirm({
-      title: `Delete ${fileNameFromPath(selectedTreePath)}?`,
+      title: `Delete ${fileNameFromPath(targetPath)}?`,
       message: 'This cannot be undone.',
       okLabel: 'Delete',
       destructive: true,
@@ -689,9 +689,9 @@ function App() {
 
     try {
       setIsBusy(true)
-      await deletePath(selectedTreePath)
+      await deletePath(targetPath)
 
-      const workspacePath = findOwningWorkspace(selectedTreePath, workspaces)
+      const workspacePath = findOwningWorkspace(targetPath, workspaces)
 
       if (workspacePath) {
         await refreshWorkspace(workspacePath)
@@ -699,7 +699,7 @@ function App() {
 
       const nextDocuments = documents.filter(
         (document) =>
-          !document.path || !isSameOrChildPath(document.path, selectedTreePath),
+          !document.path || !isSameOrChildPath(document.path, targetPath),
       )
       const remainingDocuments = nextDocuments.length > 0 ? nextDocuments : [createWelcomeDocument()]
 
@@ -864,13 +864,21 @@ function App() {
                 onOpenWorkspace={handleOpenWorkspace}
                 onOpenRecentPath={handleOpenRecentPath}
                 recents={recents}
+                onCreateNote={(path) => {
+                  setSelectedTreePath(path)
+                  void handleCreateNote(path)
+                }}
+                onCreateFolder={(path) => {
+                  setSelectedTreePath(path)
+                  void handleCreateFolder(path)
+                }}
                 onRename={(path) => {
                   setSelectedTreePath(path)
-                  void handleRenameSelection()
+                  void handleRenameSelection(path)
                 }}
                 onDelete={(path) => {
                   setSelectedTreePath(path)
-                  void handleDeleteSelection()
+                  void handleDeleteSelection(path)
                 }}
               />
             </div>

@@ -374,6 +374,8 @@ const fn current_target_triple() -> &'static str {
         "x86_64-unknown-linux-gnu"
     } else if cfg!(all(target_os = "windows", target_arch = "x86_64")) {
         "x86_64-pc-windows-msvc"
+    } else if cfg!(all(target_os = "windows", target_arch = "aarch64")) {
+        "aarch64-pc-windows-msvc"
     } else {
         "unknown"
     }
