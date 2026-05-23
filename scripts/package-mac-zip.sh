@@ -36,10 +36,22 @@ if [[ ! -d "$APP_BUNDLE" ]]; then
   exit 1
 fi
 
+APP_MACOS_DIR="$APP_BUNDLE/Contents/MacOS"
+if compgen -G "$ROOT_DIR/src-tauri/binaries/*.dylib" > /dev/null; then
+  echo "Copying llama.cpp dylibs into the built app bundle..."
+  cp "$ROOT_DIR"/src-tauri/binaries/*.dylib "$APP_MACOS_DIR/"
+fi
+
 echo "Preparing release folder..."
 rm -rf "$STAGING_DIR" "$ZIP_PATH"
 mkdir -p "$STAGING_DIR"
 ditto "$APP_BUNDLE" "$STAGING_DIR/$APP_NAME.app"
+
+MACOS_DIR="$STAGING_DIR/$APP_NAME.app/Contents/MacOS"
+if compgen -G "$ROOT_DIR/src-tauri/binaries/*.dylib" > /dev/null; then
+  echo "Copying llama.cpp dylibs into the release app bundle..."
+  cp "$ROOT_DIR"/src-tauri/binaries/*.dylib "$MACOS_DIR/"
+fi
 
 cat > "$INSTALLER_PATH" <<'INSTALLER'
 #!/bin/zsh

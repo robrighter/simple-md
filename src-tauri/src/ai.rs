@@ -334,6 +334,19 @@ fn locate_llama_server(app: &AppHandle) -> Result<PathBuf, String> {
     let triple = current_target_triple();
     let bin_name = format!("llama-server-{triple}");
 
+    // macOS packaged app: Tauri places externalBin entries in Contents/MacOS
+    // and strips the target-triple suffix. The llama.cpp dylibs must be copied
+    // beside this executable because it uses @rpath/@loader_path.
+    #[cfg(target_os = "macos")]
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(mac_os_dir) = exe.parent() {
+            let candidate = mac_os_dir.join("llama-server");
+            if candidate.exists() {
+                return Ok(candidate);
+            }
+        }
+    }
+
     // Packaged app: alongside other resources.
     if let Ok(resource_dir) = app.path().resource_dir() {
         // Windows: Tauri strips the target triple suffix when installing the
