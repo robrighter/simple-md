@@ -1,4 +1,5 @@
 import {
+  Component,
   lazy,
   Suspense,
   startTransition,
@@ -8,6 +9,8 @@ import {
   useMemo,
   useRef,
   useState,
+  type ErrorInfo,
+  type ReactNode,
 } from 'react'
 import type { EditorApi } from './features/editor/EditorPane'
 import { useDialog } from './components/DialogContext'
@@ -29,9 +32,11 @@ import type {
   WorkspaceSnapshot,
 } from './app/types'
 import {
+  chooseFolderDialog,
   createFolder,
   createNote,
   deletePath,
+  exportDocument,
   fetchRemoteMarkdown,
   listWorkspace,
   listenForOpenedTargets,
@@ -40,6 +45,7 @@ import {
   openPathExternally,
   openWorkspaceDialog,
   openedTargets,
+  printHtmlDocument,
   renamePath,
   saveDocument,
 } from './lib/desktop'
@@ -53,8 +59,10 @@ import {
   normalizeOpenedTarget,
   replacePathPrefix,
 } from './lib/document'
+import { createExportHtml } from './lib/export'
 
 const RECENTS_KEY = 'simple-md-recents'
+const EXTERNAL_CHANGE_CHECK_INTERVAL_MS = 4000
 const EditorPane = lazy(() =>
   import('./features/editor/EditorPane').then((module) => ({ default: module.EditorPane })),
 )
@@ -73,6 +81,44 @@ const TaskReport = lazy(() =>
 type RecentsState = {
   files: string[]
   workspaces: string[]
+}
+
+type SurfaceErrorBoundaryProps = {
+  resetKey: string
+  children: ReactNode
+}
+
+class SurfaceErrorBoundary extends Component<
+  SurfaceErrorBoundaryProps,
+  { hasError: boolean }
+> {
+  state = { hasError: false }
+
+  static getDerivedStateFromError() {
+    return { hasError: true }
+  }
+
+  componentDidCatch(error: unknown, info: ErrorInfo) {
+    console.error('Document surface crashed:', error, info)
+  }
+
+  componentDidUpdate(previousProps: SurfaceErrorBoundaryProps) {
+    if (previousProps.resetKey !== this.props.resetKey && this.state.hasError) {
+      this.setState({ hasError: false })
+    }
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="empty-state">
+          This document view hit an error. Switch tabs or change modes to reload it.
+        </div>
+      )
+    }
+
+    return this.props.children
+  }
 }
 
 function loadRecents(): RecentsState {
@@ -139,6 +185,59 @@ function App() {
   useEffect(() => {
     saveRecents(recents)
   }, [recents])
+
+  const checkForExternalChanges = useEffectEvent(async () => {
+    const candidates = documents.filter(
+      (document) => document.path && document.savedVersion && !document.externalChange,
+    )
+
+    await Promise.all(
+      candidates.map(async (document) => {
+        try {
+          const current = await openDocument(document.path as string)
+
+          if (!current.version || current.version === document.savedVersion) {
+            return
+          }
+
+          updateDocument(document.id, (latest) => {
+            if (
+              latest.savedVersion !== document.savedVersion ||
+              latest.externalChange ||
+              current.version === latest.savedVersion
+            ) {
+              return latest
+            }
+
+            return {
+              ...latest,
+              externalChange: {
+                version: current.version as string,
+                content: current.content,
+              },
+            }
+          })
+
+          if (document.id === activeDocumentId) {
+            setLastMessage(`${document.title} changed on disk.`)
+          }
+        } catch {
+          // The file may have been moved or temporarily unavailable. Keep the
+          // editor buffer intact; the next explicit file action will surface it.
+        }
+      }),
+    )
+  })
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      void checkForExternalChanges()
+    }, EXTERNAL_CHANGE_CHECK_INTERVAL_MS)
+
+    void checkForExternalChanges()
+
+    return () => window.clearInterval(timer)
+  }, [])
 
   const onSaveShortcut = useEffectEvent(() => {
     void handleSaveDocument()
@@ -357,6 +456,7 @@ function App() {
         title: payload.name,
         content: payload.content,
         isDirty: false,
+        savedVersion: payload.version,
         mode: activeDocument?.mode ?? 'source',
         workspacePath: findOwningWorkspace(payload.path, workspaces),
       }
@@ -386,6 +486,12 @@ function App() {
     }
   }
 
+  async function handleOpenDroppedMarkdownFiles(paths: string[]) {
+    for (const path of paths) {
+      await handleOpenDocument(path)
+    }
+  }
+
   function handleContentChange(content: string) {
     if (!activeDocument) {
       return
@@ -411,49 +517,110 @@ function App() {
       return
     }
 
+    if (!activeDocument.path) {
+      await handleSaveAsDocument()
+      return
+    }
+
     try {
       setIsBusy(true)
 
-      if (activeDocument.path) {
-        const saved = await saveDocument(activeDocument.path, activeDocument.content)
-        updateDocument(activeDocument.id, (document) => ({
-          ...document,
-          title: saved.name,
-          content: saved.content,
-          isDirty: false,
-        }))
+      if (activeDocument.externalChange) {
+        setLastMessage('Choose reload or overwrite before saving this file.')
+        return
+      }
 
-        const workspacePath = findOwningWorkspace(saved.path, workspaces)
+      const saved = await saveDocument(
+        activeDocument.path,
+        activeDocument.content,
+        activeDocument.savedVersion,
+      )
+      updateDocument(activeDocument.id, (document) => ({
+        ...document,
+        title: saved.name,
+        content: saved.content,
+        isDirty: false,
+        savedVersion: saved.version,
+        externalChange: undefined,
+      }))
 
-        if (workspacePath) {
-          await refreshWorkspace(workspacePath)
+      const workspacePath = findOwningWorkspace(saved.path, workspaces)
+
+      if (workspacePath) {
+        await refreshWorkspace(workspacePath)
+      }
+
+      setRecents((current) => ({
+        ...current,
+        files: pushRecent(current.files, saved.path),
+      }))
+      setLastMessage(`Saved ${saved.name}.`)
+    } catch (error) {
+      const message = getErrorMessage(error, 'Unable to save the current document.')
+
+      if (activeDocument.path && message.includes('changed on disk')) {
+        try {
+          const current = await openDocument(activeDocument.path)
+
+          if (current.version) {
+            updateDocument(activeDocument.id, (document) => ({
+              ...document,
+              externalChange: {
+                version: current.version as string,
+                content: current.content,
+              },
+            }))
+          }
+        } catch {
+          // Keep the original save failure visible if the follow-up read also fails.
         }
-
-        setRecents((current) => ({
-          ...current,
-          files: pushRecent(current.files, saved.path),
-        }))
-        setLastMessage(`Saved ${saved.name}.`)
-        return
       }
 
-      const targetDirectory = resolveTargetDirectory(selectedTreePath, workspaces, activeDocument)
+      setLastMessage(message)
+    } finally {
+      setIsBusy(false)
+    }
+  }
 
-      if (!targetDirectory) {
-        setLastMessage('Open a folder before saving a new document.')
+  async function handleSaveAsDocument() {
+    if (!activeDocument) {
+      return
+    }
+
+    let initialTargetDirectory: string | null = resolveTargetDirectory(
+      selectedTreePath,
+      workspaces,
+      activeDocument,
+    )
+
+    if (!initialTargetDirectory) {
+      try {
+        initialTargetDirectory = await chooseFolderDialog('Choose Folder for Saved File')
+      } catch (error) {
+        setLastMessage(getErrorMessage(error, 'Choose a folder before saving this document.'))
         return
       }
+    }
 
-      const result = await dialog.prompt({
-        title: 'Save as',
-        defaultValue: `${createDraftTitle(activeDocument.content)}.md`,
-      })
-      const requestedName = result?.trim() ?? ''
+    if (!initialTargetDirectory) {
+      return
+    }
 
-      if (!requestedName) {
-        return
-      }
+    const result = await dialog.fileLocationPrompt({
+      title: 'Save as',
+      defaultName: getDefaultSaveAsName(activeDocument),
+      defaultFolder: initialTargetDirectory,
+      okLabel: 'Save',
+    })
+    const requestedName = result?.name.trim() ?? ''
+    const targetDirectory = result?.folder.trim() ?? ''
 
+    if (!requestedName || !targetDirectory) {
+      return
+    }
+
+    try {
+      setIsBusy(true)
       const created = await createNote(targetDirectory, requestedName, activeDocument.content)
       const workspacePath = findOwningWorkspace(created.path, workspaces)
 
@@ -465,7 +632,10 @@ function App() {
                 id: created.path,
                 path: created.path,
                 title: created.name,
+                content: created.content,
                 isDirty: false,
+                savedVersion: created.version,
+                externalChange: undefined,
                 workspacePath,
               }
             : document,
@@ -490,21 +660,154 @@ function App() {
     }
   }
 
-  async function handleCreateNote(targetPath = selectedTreePath) {
-    const targetDirectory = resolveTargetDirectory(targetPath, workspaces, activeDocument)
-
-    if (!targetDirectory) {
-      setLastMessage('Open a folder before creating a note.')
+  async function handleExportDocument(format: 'html' | 'text') {
+    if (!activeDocument) {
       return
     }
 
-    const result = await dialog.prompt({
-      title: 'New note',
-      defaultValue: 'fresh-note.md',
-    })
-    const requestedName = result?.trim() ?? ''
+    let targetDirectory: string | null = resolveTargetDirectory(
+      selectedTreePath,
+      workspaces,
+      activeDocument,
+    )
 
-    if (!requestedName) {
+    if (!targetDirectory) {
+      try {
+        targetDirectory = await chooseFolderDialog('Choose Folder for Export')
+      } catch (error) {
+        setLastMessage(getErrorMessage(error, 'Choose a folder before exporting this document.'))
+        return
+      }
+    }
+
+    if (!targetDirectory) {
+      return
+    }
+
+    const result = await dialog.fileLocationPrompt({
+      title: format === 'html' ? 'Export as HTML' : 'Export as Text',
+      defaultName: getDefaultExportName(activeDocument, format),
+      defaultFolder: targetDirectory,
+      okLabel: 'Export',
+    })
+    const requestedName = result?.name.trim() ?? ''
+    const targetFolder = result?.folder.trim() ?? ''
+
+    if (!requestedName || !targetFolder) {
+      return
+    }
+
+    const exportName = ensureExportExtension(requestedName, format)
+    try {
+      setIsBusy(true)
+      const exportContent =
+        format === 'html'
+          ? await createExportHtml({
+              title: activeDocument.title || createDraftTitle(activeDocument.content),
+              content: activeDocument.content,
+              baseUrl: activeDocument.path,
+            })
+          : activeDocument.content
+      await exportDocument(targetFolder, exportName, exportContent)
+      setLastMessage(`Exported ${exportName}.`)
+    } catch (error) {
+      setLastMessage(getErrorMessage(error, 'Unable to export the current document.'))
+    } finally {
+      setIsBusy(false)
+    }
+  }
+
+  async function handleExportPdf() {
+    if (!activeDocument) {
+      return
+    }
+
+    try {
+      const html = await createExportHtml({
+        title: activeDocument.title || createDraftTitle(activeDocument.content),
+        content: activeDocument.content,
+        baseUrl: activeDocument.path,
+      })
+      await printHtmlDocument(html)
+      setLastMessage('Opened PDF export preview. Choose Save as PDF in the print dialog.')
+    } catch (error) {
+      setLastMessage(getErrorMessage(error, 'Unable to open PDF export.'))
+    }
+  }
+
+  async function handleReloadExternalChange(documentId: string) {
+    const target = documents.find((document) => document.id === documentId)
+
+    if (!target?.externalChange) {
+      return
+    }
+
+    updateDocument(documentId, (document) => ({
+      ...document,
+      content: document.externalChange?.content ?? document.content,
+      isDirty: false,
+      savedVersion: document.externalChange?.version ?? document.savedVersion,
+      externalChange: undefined,
+    }))
+    setLastMessage(`Reloaded ${target.title} from disk.`)
+  }
+
+  async function handleOverwriteExternalChange(documentId: string) {
+    const target = documents.find((document) => document.id === documentId)
+
+    if (!target?.path || !target.externalChange) {
+      return
+    }
+
+    try {
+      setIsBusy(true)
+      const saved = await saveDocument(target.path, target.content)
+
+      updateDocument(documentId, (document) => ({
+        ...document,
+        title: saved.name,
+        content: saved.content,
+        isDirty: false,
+        savedVersion: saved.version,
+        externalChange: undefined,
+      }))
+
+      const workspacePath = findOwningWorkspace(saved.path, workspaces)
+
+      if (workspacePath) {
+        await refreshWorkspace(workspacePath)
+      }
+
+      setRecents((current) => ({
+        ...current,
+        files: pushRecent(current.files, saved.path),
+      }))
+      setLastMessage(`Overwrote disk changes in ${saved.name}.`)
+    } catch (error) {
+      setLastMessage(getErrorMessage(error, 'Unable to overwrite the file on disk.'))
+    } finally {
+      setIsBusy(false)
+    }
+  }
+
+  async function handleCreateNote(targetPath = selectedTreePath) {
+    const initialTargetDirectory = resolveTargetDirectory(targetPath, workspaces, activeDocument)
+
+    if (!initialTargetDirectory) {
+      setLastMessage('Open a folder before creating a file.')
+      return
+    }
+
+    const result = await dialog.fileLocationPrompt({
+      title: 'New file',
+      defaultName: 'fresh-note.md',
+      defaultFolder: initialTargetDirectory,
+      okLabel: 'Create',
+    })
+    const requestedName = result?.name.trim() ?? ''
+    const targetDirectory = result?.folder.trim() ?? ''
+
+    if (!requestedName || !targetDirectory) {
       return
     }
 
@@ -523,6 +826,7 @@ function App() {
         title: created.name,
         content: created.content,
         isDirty: false,
+        savedVersion: created.version,
         mode: 'source',
         workspacePath,
       }
@@ -636,6 +940,77 @@ function App() {
       setLastMessage(`Renamed to ${requestedName}.`)
     } catch (error) {
       setLastMessage(getErrorMessage(error, 'Unable to rename that item.'))
+    } finally {
+      setIsBusy(false)
+    }
+  }
+
+  async function handleRenameDocumentTab(documentId: string, nextName: string) {
+    const target = documents.find((document) => document.id === documentId)
+
+    if (!target) {
+      return
+    }
+
+    const requestedName = normalizeTabFileName(nextName, target.title)
+
+    if (!requestedName || requestedName === target.title) {
+      return
+    }
+
+    if (!target.path) {
+      updateDocument(documentId, (document) => ({
+        ...document,
+        title: requestedName,
+      }))
+      setLastMessage(`Renamed tab to ${requestedName}.`)
+      return
+    }
+
+    try {
+      setIsBusy(true)
+      const previousPath = target.path
+      const nextPath = await renamePath(previousPath, requestedName)
+      const workspacePath = findOwningWorkspace(nextPath, workspaces)
+
+      if (workspacePath) {
+        await refreshWorkspace(workspacePath)
+      }
+
+      setDocuments((current) =>
+        current.map((document) => {
+          if (document.id !== documentId && document.path !== previousPath) {
+            return document
+          }
+
+          return {
+            ...document,
+            id: document.id === document.path || document.id === documentId ? nextPath : document.id,
+            path: nextPath,
+            title: fileNameFromPath(nextPath),
+            workspacePath: document.workspacePath ? workspacePath : document.workspacePath,
+          }
+        }),
+      )
+
+      if (activeDocumentId === documentId) {
+        setActiveDocumentId(nextPath)
+      }
+
+      if (selectedTreePath === previousPath) {
+        setSelectedTreePath(nextPath)
+      }
+
+      setRecents((current) => ({
+        ...current,
+        files: pushRecent(
+          current.files.filter((path) => path !== previousPath),
+          nextPath,
+        ),
+      }))
+      setLastMessage(`Renamed to ${fileNameFromPath(nextPath)}.`)
+    } catch (error) {
+      setLastMessage(getErrorMessage(error, 'Unable to rename that file.'))
     } finally {
       setIsBusy(false)
     }
@@ -823,10 +1198,15 @@ function App() {
       <header className="app-bar">
         <Toolbar
           busy={isBusy}
-          onOpenWorkspace={() => void handleOpenWorkspace()}
+          onOpenFile={() => void handleOpenDocument()}
           onCreateNote={() => void handleCreateNote()}
           onCreateFolder={() => void handleCreateFolder()}
+          onOpenFolder={() => void handleOpenWorkspace()}
           onSave={() => void handleSaveDocument()}
+          onSaveAs={() => void handleSaveAsDocument()}
+          onExportHtml={() => void handleExportDocument('html')}
+          onExportPdf={() => void handleExportPdf()}
+          onExportText={() => void handleExportDocument('text')}
           onImportUrl={() => void handleImportUrl()}
         />
         <div className="app-bar__right">
@@ -861,7 +1241,7 @@ function App() {
                 selectedPath={selectedTreePath}
                 onActivateNode={handleOpenTreeNode}
                 onSelectPath={setSelectedTreePath}
-                onOpenWorkspace={handleOpenWorkspace}
+                onOpenWorkspace={() => void handleOpenWorkspace()}
                 onOpenRecentPath={handleOpenRecentPath}
                 recents={recents}
                 onCreateNote={(path) => {
@@ -903,55 +1283,105 @@ function App() {
           activeDocumentId={activeDocumentId}
           onActivate={setActiveDocumentId}
           onClose={(documentId) => void handleCloseDocument(documentId)}
+          onRename={(documentId, nextName) => void handleRenameDocumentTab(documentId, nextName)}
+          onOpenDroppedFiles={(paths) => void handleOpenDroppedMarkdownFiles(paths)}
           onNew={handleCreateScratchpad}
         />
 
-        <section className="workspace-frame">
-          {!activeDocument && <div className="empty-state">No document open.</div>}
+        <div className={`app-workspace ${aiPanelOpen ? 'app-workspace--with-ai' : ''}`}>
+          <section className="workspace-frame">
+            {!activeDocument && <div className="empty-state">No document open.</div>}
 
-          {activeDocument && (
-            <Suspense fallback={<div className="empty-state">Loading editor surface…</div>}>
-              <>
-                {activeDocument.reportDescriptor && (
-                  <TaskReport descriptor={activeDocument.reportDescriptor} />
-                )}
+            {activeDocument && (
+              <SurfaceErrorBoundary resetKey={`${activeDocument.id}:${activeMode}`}>
+                <div className="document-surface">
+                  {activeDocument.externalChange && (
+                    <div className="file-change-banner" role="status">
+                      <div>
+                        <strong>{activeDocument.title} changed on disk.</strong>
+                        <span>
+                          Reload the file from disk or overwrite it with the editor contents.
+                        </span>
+                      </div>
+                      <div className="file-change-banner__actions">
+                        <button
+                          type="button"
+                          className="ghost-button"
+                          onClick={() => void handleReloadExternalChange(activeDocument.id)}
+                        >
+                          Reload
+                        </button>
+                        <button
+                          type="button"
+                          className="ai-button ai-button--primary"
+                          onClick={() => void handleOverwriteExternalChange(activeDocument.id)}
+                        >
+                          Overwrite
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                  <div className="document-surface__body">
+                    <Suspense fallback={<div className="empty-state">Loading editor surface…</div>}>
+                      <>
+                        {activeDocument.reportDescriptor && (
+                          <TaskReport descriptor={activeDocument.reportDescriptor} />
+                        )}
 
-                {activeMode === 'preview' ? (
-                  <MarkdownPreview
-                    className="panel panel--preview"
-                    content={deferredContent}
-                    baseUrl={activeDocument.baseUrl}
-                  />
-                ) : activeMode === 'wysiwyg' ? (
-                  <HybridEditor
-                    key={activeDocument.id}
-                    content={activeDocument.content}
-                    onChange={handleContentChange}
-                  />
-                ) : activeMode === 'split' ? (
-                  <div className="split-layout">
-                    <EditorPane
-                      ref={editorRef}
-                      content={activeDocument.content}
-                      onChange={handleContentChange}
-                    />
-                    <MarkdownPreview
-                      className="panel panel--preview"
-                      content={deferredContent}
-                      baseUrl={activeDocument.baseUrl}
-                    />
+                        {activeMode === 'preview' ? (
+                          <MarkdownPreview
+                            className="panel panel--preview"
+                            content={deferredContent}
+                            baseUrl={activeDocument.baseUrl}
+                          />
+                        ) : activeMode === 'wysiwyg' ? (
+                          <HybridEditor
+                            key={activeDocument.id}
+                            content={activeDocument.content}
+                            onChange={handleContentChange}
+                          />
+                        ) : activeMode === 'split' ? (
+                          <div className="split-layout">
+                            <EditorPane
+                              key={`${activeDocument.id}-source`}
+                              ref={editorRef}
+                              content={activeDocument.content}
+                              onChange={handleContentChange}
+                            />
+                            <MarkdownPreview
+                              className="panel panel--preview"
+                              content={deferredContent}
+                              baseUrl={activeDocument.baseUrl}
+                            />
+                          </div>
+                        ) : (
+                          <EditorPane
+                            key={`${activeDocument.id}-source`}
+                            ref={editorRef}
+                            content={activeDocument.content}
+                            onChange={handleContentChange}
+                          />
+                        )}
+                      </>
+                    </Suspense>
                   </div>
-                ) : (
-                  <EditorPane
-                    ref={editorRef}
-                    content={activeDocument.content}
-                    onChange={handleContentChange}
-                  />
-                )}
-              </>
-            </Suspense>
-          )}
-        </section>
+                </div>
+              </SurfaceErrorBoundary>
+            )}
+          </section>
+
+          <SurfaceErrorBoundary resetKey={`ai:${activeDocument?.id ?? 'none'}`}>
+            <AIPanel
+              key={activeDocument?.id ?? 'no-document'}
+              api={ai}
+              open={aiPanelOpen}
+              onClose={() => setAiPanelOpen(false)}
+              documentContent={activeDocument?.content ?? ''}
+              editorRef={editorRef}
+              canEditDocument={activeMode === 'source' || activeMode === 'split'}
+            />
+          </SurfaceErrorBoundary>
+        </div>
 
         <StatusBar
           message={lastMessage}
@@ -969,14 +1399,6 @@ function App() {
         />
       </main>
 
-      <AIPanel
-        api={ai}
-        open={aiPanelOpen}
-        onClose={() => setAiPanelOpen(false)}
-        documentContent={activeDocument?.content ?? ''}
-        editorRef={editorRef}
-        canEditDocument={activeMode === 'source' || activeMode === 'split'}
-      />
     </div>
   )
 }
@@ -1024,6 +1446,67 @@ function resolveTargetDirectory(
   }
 
   return workspaces[0]?.path ?? null
+}
+
+function getDefaultSaveAsName(document: OpenDocument) {
+  if (document.path) {
+    return fileNameFromPath(document.path)
+  }
+
+  if (document.title && document.title !== 'Untitled Draft') {
+    return normalizeTabFileName(document.title, 'untitled.md')
+  }
+
+  return `${createDraftTitle(document.content)}.md`
+}
+
+function getDefaultExportName(document: OpenDocument, format: 'html' | 'text') {
+  const extension = format === 'html' ? 'html' : 'txt'
+  const fallbackStem = createDraftTitle(document.content)
+
+  if (document.path) {
+    return replaceFileExtension(fileNameFromPath(document.path), extension)
+  }
+
+  if (document.title && document.title !== 'Untitled Draft') {
+    return replaceFileExtension(normalizeTabFileName(document.title, `${fallbackStem}.md`), extension)
+  }
+
+  return `${fallbackStem}.${extension}`
+}
+
+function ensureExportExtension(name: string, format: 'html' | 'text') {
+  const expectedExtension = format === 'html' ? '.html' : '.txt'
+
+  if (name.toLowerCase().endsWith(expectedExtension)) {
+    return name
+  }
+
+  return `${name}${expectedExtension}`
+}
+
+function replaceFileExtension(name: string, extension: string) {
+  const trimmedName = name.trim()
+  const lastDot = trimmedName.lastIndexOf('.')
+  const stem = lastDot > 0 ? trimmedName.slice(0, lastDot) : trimmedName
+
+  return `${stem || 'export'}.${extension}`
+}
+
+function normalizeTabFileName(nextName: string, currentName: string) {
+  const trimmedName = nextName.trim()
+
+  if (!trimmedName) {
+    return ''
+  }
+
+  if (isMarkdownPath(trimmedName)) {
+    return trimmedName
+  }
+
+  const extension = currentName.match(/\.(md|markdown|mdown|mkd)$/i)?.[0]
+
+  return extension ? `${trimmedName}${extension}` : trimmedName
 }
 
 function findTreeNode(workspaces: WorkspaceRoot[], path: string | null) {

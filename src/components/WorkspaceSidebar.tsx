@@ -67,7 +67,7 @@ export function WorkspaceSidebar({
         <div className="sidebar-card__head">
           <h3>Folders</h3>
           <button type="button" className="ghost-button ghost-button--sm" onClick={onOpenWorkspace}>
-            Add
+            Open
           </button>
         </div>
 

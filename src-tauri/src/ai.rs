@@ -336,6 +336,17 @@ fn locate_llama_server(app: &AppHandle) -> Result<PathBuf, String> {
 
     // Packaged app: alongside other resources.
     if let Ok(resource_dir) = app.path().resource_dir() {
+        // Windows: Tauri strips the target triple suffix when installing the
+        // sidecar, so the binary lands as "llama-server.exe" directly in the
+        // install directory (which is what resource_dir() returns on Windows).
+        #[cfg(target_os = "windows")]
+        {
+            let candidate = resource_dir.join("llama-server.exe");
+            if candidate.exists() {
+                return Ok(candidate);
+            }
+        }
+
         let candidate = resource_dir.join("binaries").join(&bin_name);
         if candidate.exists() {
             return Ok(candidate);

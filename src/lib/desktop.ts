@@ -10,6 +10,10 @@ import type {
 } from '../app/types'
 
 export async function openWorkspaceDialog() {
+  return chooseFolderDialog('Open Folder')
+}
+
+export async function chooseFolderDialog(title = 'Choose Folder') {
   if (!isTauri()) {
     throw new Error('Folders can only be opened in the desktop app.')
   }
@@ -17,7 +21,7 @@ export async function openWorkspaceDialog() {
   const selected = await open({
     directory: true,
     multiple: false,
-    title: 'Open Folder',
+    title,
   })
   return normalizeDialogPath(selected)
 }
@@ -49,8 +53,20 @@ export async function openDocument(path: string) {
   return invoke<DocumentPayload>('open_document', { path })
 }
 
-export async function saveDocument(path: string, content: string) {
-  return invoke<DocumentPayload>('save_document', { path, content })
+export async function saveDocument(path: string, content: string, expectedVersion?: string) {
+  return invoke<DocumentPayload>('save_document', { path, content, expectedVersion })
+}
+
+export async function exportDocument(parentDir: string, name: string, content: string) {
+  return invoke<string>('export_document', {
+    parentDir: String(parentDir ?? ''),
+    name: String(name ?? ''),
+    content,
+  })
+}
+
+export async function printHtmlDocument(html: string) {
+  return invoke<void>('print_html_document', { html })
 }
 
 export async function createNote(parentDir: string, name: string, initialContent?: string) {

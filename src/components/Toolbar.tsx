@@ -2,10 +2,15 @@ import { useEffect, useRef, useState, type ReactNode } from 'react'
 
 type ToolbarProps = {
   busy: boolean
-  onOpenWorkspace: () => void
+  onOpenFile: () => void
   onCreateNote: () => void
   onCreateFolder: () => void
+  onOpenFolder: () => void
   onSave: () => void
+  onSaveAs: () => void
+  onExportHtml: () => void
+  onExportPdf: () => void
+  onExportText: () => void
   onImportUrl: () => void
 }
 
@@ -22,10 +27,15 @@ const editItems: Array<{ command: EditCommand; label: string; shortcut: string }
 
 export function Toolbar({
   busy,
-  onOpenWorkspace,
+  onOpenFile,
   onCreateNote,
   onCreateFolder,
+  onOpenFolder,
   onSave,
+  onSaveAs,
+  onExportHtml,
+  onExportPdf,
+  onExportText,
   onImportUrl,
 }: ToolbarProps) {
   return (
@@ -39,7 +49,7 @@ export function Toolbar({
                 onCreateNote()
               }}
             >
-              New note
+              New file
             </MenuItem>
             <MenuItem
               onSelect={() => {
@@ -48,6 +58,29 @@ export function Toolbar({
               }}
             >
               New folder
+            </MenuItem>
+          </>
+        )}
+      </Menu>
+
+      <Menu label="Open ▾">
+        {(close) => (
+          <>
+            <MenuItem
+              onSelect={() => {
+                close()
+                onOpenFile()
+              }}
+            >
+              Open file…
+            </MenuItem>
+            <MenuItem
+              onSelect={() => {
+                close()
+                onOpenFolder()
+              }}
+            >
+              Open folder…
             </MenuItem>
           </>
         )}
@@ -73,12 +106,60 @@ export function Toolbar({
         )}
       </Menu>
 
-      <button type="button" onClick={onOpenWorkspace} disabled={busy} title="Open a folder workspace">
-        Open
-      </button>
-      <button type="button" onClick={onSave} disabled={busy} title="Save (⌘S)">
-        Save
-      </button>
+      <Menu label="Save ▾" disabled={busy}>
+        {(close) => (
+          <>
+            <MenuItem
+              shortcut="⌘S"
+              onSelect={() => {
+                close()
+                onSave()
+              }}
+            >
+              Save
+            </MenuItem>
+            <MenuItem
+              shortcut="⇧⌘S"
+              onSelect={() => {
+                close()
+                onSaveAs()
+              }}
+            >
+              Save as…
+            </MenuItem>
+          </>
+        )}
+      </Menu>
+      <Menu label="Export ▾" disabled={busy}>
+        {(close) => (
+          <>
+            <MenuItem
+              onSelect={() => {
+                close()
+                onExportHtml()
+              }}
+            >
+              Export as HTML…
+            </MenuItem>
+            <MenuItem
+              onSelect={() => {
+                close()
+                onExportPdf()
+              }}
+            >
+              Export as PDF…
+            </MenuItem>
+            <MenuItem
+              onSelect={() => {
+                close()
+                onExportText()
+              }}
+            >
+              Export as Text…
+            </MenuItem>
+          </>
+        )}
+      </Menu>
       <button type="button" onClick={onImportUrl} disabled={busy} title="Import Markdown from a URL">
         Import…
       </button>
@@ -88,10 +169,11 @@ export function Toolbar({
 
 type MenuProps = {
   label: string
+  disabled?: boolean
   children: (close: () => void) => ReactNode
 }
 
-function Menu({ label, children }: MenuProps) {
+function Menu({ label, disabled = false, children }: MenuProps) {
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement | null>(null)
 
@@ -121,6 +203,7 @@ function Menu({ label, children }: MenuProps) {
         type="button"
         aria-haspopup="menu"
         aria-expanded={open}
+        disabled={disabled}
         onClick={() => setOpen((value) => !value)}
       >
         {label}
