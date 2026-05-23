@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Simple MD",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "identifier": "com.simplemd.desktop",
   "build": {
     "beforeDevCommand": "npm run dev",
