@@ -45,7 +45,6 @@ import {
   openPathExternally,
   openWorkspaceDialog,
   openedTargets,
-  printHtmlDocument,
   renamePath,
   saveDocument,
 } from './lib/desktop'
@@ -59,7 +58,7 @@ import {
   normalizeOpenedTarget,
   replacePathPrefix,
 } from './lib/document'
-import { createExportHtml } from './lib/export'
+import { createExportHtml, printDocument } from './lib/export'
 
 const RECENTS_KEY = 'simple-md-recents'
 const EXTERNAL_CHANGE_CHECK_INTERVAL_MS = 4000
@@ -1163,6 +1162,7 @@ function App() {
         <Toolbar
           busy={isBusy}
           onOpenFile={() => void handleOpenDocument()}
+          onCreateScratchpad={handleCreateScratchpad}
           onCreateNote={() => void handleCreateNote()}
           onCreateFolder={() => void handleCreateFolder()}
           onOpenFolder={() => void handleOpenWorkspace()}

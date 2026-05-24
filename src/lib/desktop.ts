@@ -23,7 +23,7 @@ export async function getDocumentsDir(): Promise<string | null> {
   }
 }
 
-export async function chooseFolderDialog(title = 'Choose Folder') {
+export async function chooseFolderDialog(title = 'Choose Folder', defaultPath?: string) {
   if (!isTauri()) {
     throw new Error('Folders can only be opened in the desktop app.')
   }
@@ -32,6 +32,7 @@ export async function chooseFolderDialog(title = 'Choose Folder') {
     directory: true,
     multiple: false,
     title,
+    defaultPath: defaultPath || undefined,
   })
   return normalizeDialogPath(selected)
 }
@@ -73,10 +74,6 @@ export async function exportDocument(parentDir: string, name: string, content: s
     name: String(name ?? ''),
     content,
   })
-}
-
-export async function printHtmlDocument(html: string) {
-  return invoke<void>('print_html_document', { html })
 }
 
 export async function createNote(parentDir: string, name: string, initialContent?: string) {
