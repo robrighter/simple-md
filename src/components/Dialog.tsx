@@ -193,14 +193,19 @@ export function DialogProvider({ children }: { children: ReactNode }) {
                   />
                 </label>
                 <label className="dialog-field">
-                  <span>Folder</span>
+                  <span>Folder{!folderDraft.trim() && <span className="dialog-field__required"> — required</span>}</span>
                   <div className="dialog-folder-row">
                     <input
-                      className="dialog-input"
+                      className={`dialog-input${!folderDraft.trim() ? ' dialog-input--empty' : ''}`}
                       value={folderDraft}
+                      placeholder="Choose a folder…"
                       onChange={(event) => setFolderDraft(event.target.value)}
                     />
-                    <button type="button" className="ghost-button" onClick={() => void chooseFolder()}>
+                    <button
+                      type="button"
+                      className={folderDraft.trim() ? 'ghost-button' : 'ai-button ai-button--primary'}
+                      onClick={() => void chooseFolder()}
+                    >
                       Choose…
                     </button>
                   </div>

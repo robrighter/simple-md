@@ -38,6 +38,7 @@ import {
   deletePath,
   exportDocument,
   fetchRemoteMarkdown,
+  getDocumentsDir,
   listWorkspace,
   listenForOpenedTargets,
   openDocument,
@@ -587,24 +588,8 @@ function App() {
       return
     }
 
-    let initialTargetDirectory: string | null = resolveTargetDirectory(
-      selectedTreePath,
-      workspaces,
-      activeDocument,
-    )
-
-    if (!initialTargetDirectory) {
-      try {
-        initialTargetDirectory = await chooseFolderDialog('Choose Folder for Saved File')
-      } catch (error) {
-        setLastMessage(getErrorMessage(error, 'Choose a folder before saving this document.'))
-        return
-      }
-    }
-
-    if (!initialTargetDirectory) {
-      return
-    }
+    const resolvedDirectory = resolveTargetDirectory(selectedTreePath, workspaces, activeDocument)
+    const initialTargetDirectory = resolvedDirectory ?? (await getDocumentsDir()) ?? ''
 
     const result = await dialog.fileLocationPrompt({
       title: 'Save as',
@@ -791,12 +776,8 @@ function App() {
   }
 
   async function handleCreateNote(targetPath = selectedTreePath) {
-    const initialTargetDirectory = resolveTargetDirectory(targetPath, workspaces, activeDocument)
-
-    if (!initialTargetDirectory) {
-      setLastMessage('Open a folder before creating a file.')
-      return
-    }
+    const resolvedDirectory = resolveTargetDirectory(targetPath, workspaces, activeDocument)
+    const initialTargetDirectory = resolvedDirectory ?? (await getDocumentsDir()) ?? ''
 
     const result = await dialog.fileLocationPrompt({
       title: 'New file',

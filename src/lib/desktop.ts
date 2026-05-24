@@ -1,5 +1,6 @@
 import { invoke, isTauri } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
+import { documentDir } from '@tauri-apps/api/path'
 import { open } from '@tauri-apps/plugin-dialog'
 import { openPath, openUrl } from '@tauri-apps/plugin-opener'
 import type {
@@ -11,6 +12,15 @@ import type {
 
 export async function openWorkspaceDialog() {
   return chooseFolderDialog('Open Folder')
+}
+
+export async function getDocumentsDir(): Promise<string | null> {
+  if (!isTauri()) return null
+  try {
+    return await documentDir()
+  } catch {
+    return null
+  }
 }
 
 export async function chooseFolderDialog(title = 'Choose Folder') {
