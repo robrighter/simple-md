@@ -33,11 +33,14 @@ try {
     }
 
     # ── 2. Build release binary (no AI sidecar) ────────────────────────────────
+    # SIMPLE_MD_STORE_BUILD=1 tells Vite to compile out the AI UI entirely.
     # tauri.store.conf.json overrides externalBin to [] so tauri-build does not
     # require the llama-server sidecar binary to be present.
-    Write-Host "Building Store release (target: $Target, no AI sidecar)..." -ForegroundColor Cyan
+    Write-Host "Building Store release (target: $Target, no AI)..." -ForegroundColor Cyan
+    $env:SIMPLE_MD_STORE_BUILD = '1'
     $StoreConfig = Join-Path $RepoRoot "src-tauri\tauri.store.conf.json"
     & $TauriCmd build --target $Target --config $StoreConfig --bundles nsis
+    $env:SIMPLE_MD_STORE_BUILD = ''
     if ($LASTEXITCODE -ne 0) { Write-Error "tauri build failed." }
 
     # ── 3. Locate the compiled binary ──────────────────────────────────────────

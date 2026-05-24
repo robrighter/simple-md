@@ -1211,11 +1211,13 @@ function App() {
         />
         <div className="app-bar__right">
           <ModeToggle mode={activeMode} onChange={handleModeChange} />
-          <AICallout
-            models={ai.state.models}
-            runtime={ai.state.runtime}
-            onOpen={() => setAiPanelOpen(true)}
-          />
+          {!__STORE_BUILD__ && (
+            <AICallout
+              models={ai.state.models}
+              runtime={ai.state.runtime}
+              onOpen={() => setAiPanelOpen(true)}
+            />
+          )}
         </div>
       </header>
 
@@ -1288,7 +1290,7 @@ function App() {
           onNew={handleCreateScratchpad}
         />
 
-        <div className={`app-workspace ${aiPanelOpen ? 'app-workspace--with-ai' : ''}`}>
+        <div className={`app-workspace ${!__STORE_BUILD__ && aiPanelOpen ? 'app-workspace--with-ai' : ''}`}>
           <section className="workspace-frame">
             {!activeDocument && <div className="empty-state">No document open.</div>}
 
@@ -1370,17 +1372,19 @@ function App() {
             )}
           </section>
 
-          <SurfaceErrorBoundary resetKey={`ai:${activeDocument?.id ?? 'none'}`}>
-            <AIPanel
-              key={activeDocument?.id ?? 'no-document'}
-              api={ai}
-              open={aiPanelOpen}
-              onClose={() => setAiPanelOpen(false)}
-              documentContent={activeDocument?.content ?? ''}
-              editorRef={editorRef}
-              canEditDocument={activeMode === 'source' || activeMode === 'split'}
-            />
-          </SurfaceErrorBoundary>
+          {!__STORE_BUILD__ && (
+            <SurfaceErrorBoundary resetKey={`ai:${activeDocument?.id ?? 'none'}`}>
+              <AIPanel
+                key={activeDocument?.id ?? 'no-document'}
+                api={ai}
+                open={aiPanelOpen}
+                onClose={() => setAiPanelOpen(false)}
+                documentContent={activeDocument?.content ?? ''}
+                editorRef={editorRef}
+                canEditDocument={activeMode === 'source' || activeMode === 'split'}
+              />
+            </SurfaceErrorBoundary>
+          )}
         </div>
 
         <StatusBar

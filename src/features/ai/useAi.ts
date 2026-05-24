@@ -48,7 +48,21 @@ export type AiApi = {
 
 const initialRuntime: RuntimeStatus = { running: false, variant: null, port: null }
 
+const noop = async () => {}
+const noopApi: AiApi = {
+  state: { settings: null, models: [], runtime: initialRuntime, download: null, chat: [], busy: false },
+  acceptLicense: noop,
+  refresh: noop,
+  downloadModel: noop,
+  startRuntime: noop,
+  stopRuntime: noop,
+  sendMessage: async () => null,
+  cancelStream: () => {},
+  resetChat: () => {},
+}
+
 export function useAi(): AiApi {
+  if (__STORE_BUILD__) return noopApi
   const [settings, setSettings] = useState<AiSettings | null>(null)
   const [models, setModels] = useState<ModelStatus[]>([])
   const [runtime, setRuntime] = useState<RuntimeStatus>(initialRuntime)

@@ -6,6 +6,9 @@ const host = process.env.TAURI_DEV_HOST
 export default defineConfig({
   clearScreen: false,
   plugins: [react()],
+  define: {
+    __STORE_BUILD__: JSON.stringify(process.env.SIMPLE_MD_STORE_BUILD === '1'),
+  },
   build: {
     chunkSizeWarningLimit: 600,
     rollupOptions: {
