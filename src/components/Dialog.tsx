@@ -109,7 +109,7 @@ export function DialogProvider({ children }: { children: ReactNode }) {
     }
 
     try {
-      const selected = await chooseFolderDialog('Choose Folder')
+      const selected = await chooseFolderDialog('Choose Folder', folderDraft || undefined)
 
       if (selected) {
         setFolderDraft(selected)
@@ -118,7 +118,7 @@ export function DialogProvider({ children }: { children: ReactNode }) {
       // In browser preview the native picker is unavailable; keep the visible
       // path editable so the user can still set the destination.
     }
-  }, [pending])
+  }, [pending, folderDraft])
 
   useEffect(() => {
     if (pending?.kind === 'prompt' || pending?.kind === 'file-location-prompt') {

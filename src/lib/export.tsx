@@ -1,3 +1,6 @@
+import { flushSync } from 'react-dom'
+import { createRoot } from 'react-dom/client'
+
 type ExportHtmlOptions = {
   title: string
   content: string
@@ -5,19 +8,42 @@ type ExportHtmlOptions = {
 }
 
 export async function createExportHtml({ title, content, baseUrl }: ExportHtmlOptions) {
-  const [{ renderToStaticMarkup }, { MarkdownPreview }] = await Promise.all([
-    import('react-dom/server'),
-    import('../features/preview/MarkdownPreview'),
-  ])
-  const previewMarkup = renderToStaticMarkup(
-    <MarkdownPreview
-      content={content}
-      baseUrl={baseUrl}
-      className="export-preview"
-      staticCharts
-    />,
+  const { MarkdownPreview } = await import('../features/preview/MarkdownPreview')
+
+  const container = document.createElement('div')
+  container.style.cssText = 'position:absolute;top:-10000px;left:-10000px;width:860px'
+  document.body.appendChild(container)
+
+  const root = createRoot(container)
+  flushSync(() => {
+    root.render(<MarkdownPreview content={content} baseUrl={baseUrl} staticCharts />)
+  })
+
+  const previewMarkup = container.innerHTML
+  root.unmount()
+  document.body.removeChild(container)
+
+  return buildExportHtml(title, previewMarkup)
+}
+
+export function printDocument(html: string): void {
+  const iframe = document.createElement('iframe')
+  iframe.style.cssText = 'position:fixed;top:0;left:0;width:0;height:0;border:none'
+  document.body.appendChild(iframe)
+
+  iframe.addEventListener(
+    'load',
+    () => {
+      iframe.contentWindow?.print()
+      setTimeout(() => iframe.remove(), 2_000)
+    },
+    { once: true },
   )
 
+  iframe.srcdoc = html
+}
+
+function buildExportHtml(title: string, previewMarkup: string) {
   return `<!doctype html>
 <html lang="en">
   <head>

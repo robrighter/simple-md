@@ -3,6 +3,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react'
 type ToolbarProps = {
   busy: boolean
   onOpenFile: () => void
+  onCreateScratchpad: () => void
   onCreateNote: () => void
   onCreateFolder: () => void
   onOpenFolder: () => void
@@ -27,6 +28,7 @@ const editItems: Array<{ command: EditCommand; label: string; shortcut: string }
 export function Toolbar({
   busy,
   onOpenFile,
+  onCreateScratchpad,
   onCreateNote,
   onCreateFolder,
   onOpenFolder,
@@ -44,10 +46,18 @@ export function Toolbar({
             <MenuItem
               onSelect={() => {
                 close()
+                onCreateScratchpad()
+              }}
+            >
+              New draft
+            </MenuItem>
+            <MenuItem
+              onSelect={() => {
+                close()
                 onCreateNote()
               }}
             >
-              New file
+              New file…
             </MenuItem>
             <MenuItem
               onSelect={() => {
@@ -55,7 +65,7 @@ export function Toolbar({
                 onCreateFolder()
               }}
             >
-              New folder
+              New folder…
             </MenuItem>
           </>
         )}
