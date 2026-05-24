@@ -316,6 +316,8 @@ In the **Notes for certification** field, add:
 ```
 Simple MD is a local Markdown editor. It reads and writes .md files on the user's local filesystem using Tauri's filesystem APIs. It does not connect to any external services during normal operation. The app optionally fetches public Markdown documents from HTTPS URLs when the user explicitly provides a URL using the Import feature. No telemetry, no accounts, no cloud sync.
 
+This app is a Win32 desktop application packaged as MSIX using the Desktop Bridge pathway. It declares the runFullTrust restricted capability, which is required for all Win32 apps packaged as MSIX. The app uses this capability to read and write files anywhere on the local filesystem (the user selects folders and files via standard OS file/folder picker dialogs), to register as the system default handler for .md/.markdown/.mdown/.mkd file types, and to open files passed to it via OS file association (double-click in Explorer). No elevated privileges, background services, or system modifications are performed beyond standard Win32 application behavior.
+
 File type associations (.md, .markdown, .mdown, .mkd) are declared in the package manifest and are used to open files from File Explorer.
 
 Test instructions: launch the app, click New > Note, type some Markdown, switch between Display / Hybrid / Split / Source modes using the tabs in the toolbar, and save the file. To test file association, right-click any .md file in Explorer and choose Open With > Simple MD.

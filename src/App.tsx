@@ -32,7 +32,6 @@ import type {
   WorkspaceSnapshot,
 } from './app/types'
 import {
-  chooseFolderDialog,
   createFolder,
   createNote,
   deletePath,
@@ -645,33 +644,17 @@ function App() {
     }
   }
 
-  async function handleExportDocument(format: 'html' | 'text') {
+  async function handleExportHtml() {
     if (!activeDocument) {
       return
     }
 
-    let targetDirectory: string | null = resolveTargetDirectory(
-      selectedTreePath,
-      workspaces,
-      activeDocument,
-    )
-
-    if (!targetDirectory) {
-      try {
-        targetDirectory = await chooseFolderDialog('Choose Folder for Export')
-      } catch (error) {
-        setLastMessage(getErrorMessage(error, 'Choose a folder before exporting this document.'))
-        return
-      }
-    }
-
-    if (!targetDirectory) {
-      return
-    }
+    const resolvedDirectory = resolveTargetDirectory(selectedTreePath, workspaces, activeDocument)
+    const targetDirectory = resolvedDirectory ?? (await getDocumentsDir()) ?? ''
 
     const result = await dialog.fileLocationPrompt({
-      title: format === 'html' ? 'Export as HTML' : 'Export as Text',
-      defaultName: getDefaultExportName(activeDocument, format),
+      title: 'Export as HTML',
+      defaultName: getDefaultExportName(activeDocument),
       defaultFolder: targetDirectory,
       okLabel: 'Export',
     })
@@ -682,18 +665,15 @@ function App() {
       return
     }
 
-    const exportName = ensureExportExtension(requestedName, format)
+    const exportName = ensureExportExtension(requestedName)
     try {
       setIsBusy(true)
-      const exportContent =
-        format === 'html'
-          ? await createExportHtml({
-              title: activeDocument.title || createDraftTitle(activeDocument.content),
-              content: activeDocument.content,
-              baseUrl: activeDocument.path,
-            })
-          : activeDocument.content
-      await exportDocument(targetFolder, exportName, exportContent)
+      const html = await createExportHtml({
+        title: activeDocument.title || createDraftTitle(activeDocument.content),
+        content: activeDocument.content,
+        baseUrl: activeDocument.path,
+      })
+      await exportDocument(targetFolder, exportName, html)
       setLastMessage(`Exported ${exportName}.`)
     } catch (error) {
       setLastMessage(getErrorMessage(error, 'Unable to export the current document.'))
@@ -702,21 +682,24 @@ function App() {
     }
   }
 
-  async function handleExportPdf() {
+  async function handlePrint() {
     if (!activeDocument) {
       return
     }
 
     try {
+      setIsBusy(true)
       const html = await createExportHtml({
         title: activeDocument.title || createDraftTitle(activeDocument.content),
         content: activeDocument.content,
         baseUrl: activeDocument.path,
       })
       await printHtmlDocument(html)
-      setLastMessage('Opened PDF export preview. Choose Save as PDF in the print dialog.')
+      setLastMessage('Print preview opened in your browser.')
     } catch (error) {
-      setLastMessage(getErrorMessage(error, 'Unable to open PDF export.'))
+      setLastMessage(getErrorMessage(error, 'Unable to open print preview.'))
+    } finally {
+      setIsBusy(false)
     }
   }
 
@@ -1185,9 +1168,8 @@ function App() {
           onOpenFolder={() => void handleOpenWorkspace()}
           onSave={() => void handleSaveDocument()}
           onSaveAs={() => void handleSaveAsDocument()}
-          onExportHtml={() => void handleExportDocument('html')}
-          onExportPdf={() => void handleExportPdf()}
-          onExportText={() => void handleExportDocument('text')}
+          onExportHtml={() => void handleExportHtml()}
+          onPrint={() => void handlePrint()}
           onImportUrl={() => void handleImportUrl()}
         />
         <div className="app-bar__right">
@@ -1445,29 +1427,26 @@ function getDefaultSaveAsName(document: OpenDocument) {
   return `${createDraftTitle(document.content)}.md`
 }
 
-function getDefaultExportName(document: OpenDocument, format: 'html' | 'text') {
-  const extension = format === 'html' ? 'html' : 'txt'
+function getDefaultExportName(document: OpenDocument) {
   const fallbackStem = createDraftTitle(document.content)
 
   if (document.path) {
-    return replaceFileExtension(fileNameFromPath(document.path), extension)
+    return replaceFileExtension(fileNameFromPath(document.path), 'html')
   }
 
   if (document.title && document.title !== 'Untitled Draft') {
-    return replaceFileExtension(normalizeTabFileName(document.title, `${fallbackStem}.md`), extension)
+    return replaceFileExtension(normalizeTabFileName(document.title, `${fallbackStem}.md`), 'html')
   }
 
-  return `${fallbackStem}.${extension}`
+  return `${fallbackStem}.html`
 }
 
-function ensureExportExtension(name: string, format: 'html' | 'text') {
-  const expectedExtension = format === 'html' ? '.html' : '.txt'
-
-  if (name.toLowerCase().endsWith(expectedExtension)) {
+function ensureExportExtension(name: string) {
+  if (name.toLowerCase().endsWith('.html')) {
     return name
   }
 
-  return `${name}${expectedExtension}`
+  return `${name}.html`
 }
 
 function replaceFileExtension(name: string, extension: string) {

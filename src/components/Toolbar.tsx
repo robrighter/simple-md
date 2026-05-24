@@ -9,8 +9,7 @@ type ToolbarProps = {
   onSave: () => void
   onSaveAs: () => void
   onExportHtml: () => void
-  onExportPdf: () => void
-  onExportText: () => void
+  onPrint: () => void
   onImportUrl: () => void
 }
 
@@ -34,8 +33,7 @@ export function Toolbar({
   onSave,
   onSaveAs,
   onExportHtml,
-  onExportPdf,
-  onExportText,
+  onPrint,
   onImportUrl,
 }: ToolbarProps) {
   return (
@@ -144,18 +142,10 @@ export function Toolbar({
             <MenuItem
               onSelect={() => {
                 close()
-                onExportPdf()
+                onPrint()
               }}
             >
-              Export as PDF…
-            </MenuItem>
-            <MenuItem
-              onSelect={() => {
-                close()
-                onExportText()
-              }}
-            >
-              Export as Text…
+              Print…
             </MenuItem>
           </>
         )}
