@@ -13,6 +13,7 @@ import {
   type ReactNode,
 } from 'react'
 import type { EditorApi } from './features/editor/EditorPane'
+import { FindBar } from './features/find/FindBar'
 import { useDialog } from './components/DialogContext'
 import { ModeToggle } from './components/ModeToggle'
 import { StatusBar } from './components/StatusBar'
@@ -163,7 +164,27 @@ function App() {
 
   const activeDocument =
     documents.find((document) => document.id === activeDocumentId) ?? documents[0] ?? null
+  const activeMode = activeDocument?.mode ?? 'source'
   const deferredContent = useDeferredValue(activeDocument?.content ?? '')
+
+  const [findOpen, setFindOpen] = useState(false)
+  const [findQuery, setFindQuery] = useState('')
+  const [findCurrent, setFindCurrent] = useState(0)
+
+  const findTotal = useMemo(() => {
+    if (!findQuery || !activeDocument) return 0
+    const text = activeDocument.content.toLowerCase()
+    const query = findQuery.toLowerCase()
+    let count = 0
+    let pos = 0
+    while (true) {
+      const idx = text.indexOf(query, pos)
+      if (idx === -1) break
+      count++
+      pos = idx + 1
+    }
+    return count
+  }, [findQuery, activeDocument])
 
   const stats = useMemo(() => {
     if (!activeDocument) {
@@ -242,11 +263,27 @@ function App() {
     void handleSaveDocument()
   })
 
+  const onFindOpen = useEffectEvent(() => {
+    setFindOpen(true)
+  })
+
+  const onFindClose = useEffectEvent(() => {
+    setFindOpen(false)
+    setFindQuery('')
+    setFindCurrent(0)
+    editorRef.current?.cmFindClear()
+  })
+
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 's') {
         event.preventDefault()
         onSaveShortcut()
+      } else if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'f') {
+        event.preventDefault()
+        onFindOpen()
+      } else if (event.key === 'Escape') {
+        onFindClose()
       }
     }
 
@@ -275,6 +312,63 @@ function App() {
       window.removeEventListener('beforeunload', onBeforeUnload)
     }
   }, [documents])
+
+  // ── Find handlers ──────────────────────────────────────────────────────────
+
+  function handleFindQueryChange(query: string) {
+    setFindQuery(query)
+    setFindCurrent(0)
+    if (activeMode === 'source' || activeMode === 'split') {
+      editorRef.current?.cmFindSet(query, 0)
+    }
+  }
+
+  function handleFindNext() {
+    if (findTotal === 0) return
+    const next = (findCurrent + 1) % findTotal
+    setFindCurrent(next)
+    if (activeMode === 'source' || activeMode === 'split') {
+      editorRef.current?.cmFindSet(findQuery, next)
+    }
+  }
+
+  function handleFindPrev() {
+    if (findTotal === 0) return
+    const prev = (findCurrent - 1 + findTotal) % findTotal
+    setFindCurrent(prev)
+    if (activeMode === 'source' || activeMode === 'split') {
+      editorRef.current?.cmFindSet(findQuery, prev)
+    }
+  }
+
+  function handleFindClose() {
+    setFindOpen(false)
+    setFindQuery('')
+    setFindCurrent(0)
+    editorRef.current?.cmFindClear()
+  }
+
+  // Keep CodeMirror in sync when mode changes while find is open
+  useEffect(() => {
+    if (!findOpen) return
+    if (activeMode === 'source' || activeMode === 'split') {
+      editorRef.current?.cmFindSet(findQuery, findCurrent)
+    } else {
+      editorRef.current?.cmFindClear()
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeMode, findOpen])
+
+  // Reset find state when active document changes
+  useEffect(() => {
+    setFindOpen(false)
+    setFindQuery('')
+    setFindCurrent(0)
+    editorRef.current?.cmFindClear()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeDocumentId])
+
+  // ───────────────────────────────────────────────────────────────────────────
 
   async function handleOpenedTargets(targets: string[]) {
     for (const rawTarget of targets) {
@@ -693,7 +787,7 @@ function App() {
         content: activeDocument.content,
         baseUrl: activeDocument.path,
       })
-      await printHtmlDocument(html)
+      await printDocument(html)
       setLastMessage('Print preview opened in your browser.')
     } catch (error) {
       setLastMessage(getErrorMessage(error, 'Unable to open print preview.'))
@@ -1154,8 +1248,6 @@ function App() {
     setLastMessage('Opened a fresh scratchpad.')
   }
 
-  const activeMode = activeDocument?.mode ?? 'source'
-
   return (
     <div className="app-shell">
       <header className="app-bar">
@@ -1287,6 +1379,18 @@ function App() {
                     </div>
                   )}
                   <div className="document-surface__body">
+                    {findOpen && (
+                      <FindBar
+                        query={findQuery}
+                        current={findCurrent}
+                        total={findTotal}
+                        disabled={activeMode === 'wysiwyg'}
+                        onQueryChange={handleFindQueryChange}
+                        onNext={handleFindNext}
+                        onPrev={handleFindPrev}
+                        onClose={handleFindClose}
+                      />
+                    )}
                     <Suspense fallback={<div className="empty-state">Loading editor surface…</div>}>
                       <>
                         {activeDocument.reportDescriptor && (
@@ -1298,6 +1402,8 @@ function App() {
                             className="panel panel--preview"
                             content={deferredContent}
                             baseUrl={activeDocument.baseUrl}
+                            findQuery={findOpen ? findQuery : undefined}
+                            findCurrentIndex={findOpen ? findCurrent : undefined}
                           />
                         ) : activeMode === 'wysiwyg' ? (
                           <HybridEditor

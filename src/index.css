@@ -492,6 +492,7 @@ pre {
   min-height: 0;
   display: flex;
   flex-direction: column;
+  position: relative;
 }
 
 .document-surface__body > section,
@@ -1740,4 +1741,110 @@ pre {
 .ai-model__progress {
   font-size: 13px;
   color: var(--ink-soft);
+}
+
+/* ── Find bar ───────────────────────────────────────────────────────────────── */
+
+.find-bar {
+  position: absolute;
+  top: 8px;
+  right: 12px;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--panel-strong);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md, 8px);
+  box-shadow: 0 4px 16px rgba(28, 21, 12, 0.16);
+  padding: 4px 6px;
+  min-width: 280px;
+  max-width: 420px;
+}
+
+.find-bar__input {
+  flex: 1 1 auto;
+  min-width: 0;
+  background: transparent;
+  border: none;
+  outline: none;
+  font-size: 13px;
+  font-family: inherit;
+  color: var(--ink);
+  padding: 2px 4px;
+}
+
+.find-bar__input::placeholder {
+  color: var(--ink-muted);
+}
+
+.find-bar__counter {
+  font-size: 11px;
+  color: var(--ink-soft);
+  white-space: nowrap;
+  padding: 0 4px;
+  min-width: 52px;
+  text-align: right;
+}
+
+.find-bar__counter--empty {
+  color: var(--ink-muted);
+}
+
+.find-bar__note {
+  font-size: 11px;
+  color: var(--ink-muted);
+  white-space: nowrap;
+  padding: 0 4px;
+  font-style: italic;
+}
+
+.find-bar__actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.find-bar__btn {
+  appearance: none;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm, 4px);
+  cursor: pointer;
+  padding: 2px 6px;
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--ink-soft);
+  transition: background 0.1s, color 0.1s;
+}
+
+.find-bar__btn:hover:not(:disabled) {
+  background: var(--hover);
+  color: var(--ink);
+}
+
+.find-bar__btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.find-bar__btn--close {
+  font-size: 16px;
+  padding: 0 5px;
+  line-height: 1.2;
+}
+
+/* Preview / DOM find marks */
+mark.find-match {
+  background: rgba(255, 190, 0, 0.38);
+  color: inherit;
+  border-radius: 2px;
+  padding: 0;
+}
+
+mark.find-match.find-current {
+  background: rgba(255, 120, 0, 0.55);
+  outline: 1.5px solid rgba(200, 90, 0, 0.6);
+  border-radius: 2px;
 }
