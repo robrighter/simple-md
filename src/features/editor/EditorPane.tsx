@@ -1,7 +1,8 @@
 import { forwardRef, useImperativeHandle, useRef } from 'react'
 import CodeMirror, { type ReactCodeMirrorRef } from '@uiw/react-codemirror'
 import { markdown } from '@codemirror/lang-markdown'
-import { EditorView } from '@codemirror/view'
+import { EditorView, ViewPlugin, Decoration, type ViewUpdate, type DecorationSet } from '@codemirror/view'
+import { StateEffect, StateField, RangeSetBuilder } from '@codemirror/state'
 
 export type EditorApi = {
   getContent: () => string
@@ -12,12 +13,78 @@ export type EditorApi = {
   insertAtCursor: (text: string) => void
   appendToDocument: (text: string) => void
   focus: () => void
+  cmFindSet: (query: string, current: number) => void
+  cmFindClear: () => void
 }
 
 type EditorPaneProps = {
   content: string
   onChange: (value: string) => void
 }
+
+// ── Find highlight infrastructure ────────────────────────────────────────────
+
+type FindState = { query: string; current: number }
+
+const setFindEffect = StateEffect.define<FindState>()
+
+const findStateField = StateField.define<FindState>({
+  create: () => ({ query: '', current: 0 }),
+  update(value, tr) {
+    for (const e of tr.effects) {
+      if (e.is(setFindEffect)) return e.value
+    }
+    return value
+  },
+})
+
+const matchMark = Decoration.mark({ class: 'cm-find-match' })
+const currentMark = Decoration.mark({ class: 'cm-find-match cm-find-current' })
+
+function buildFindDecorations(view: EditorView): DecorationSet {
+  const { query, current } = view.state.field(findStateField)
+  if (!query) return Decoration.none
+
+  const doc = view.state.doc.toString()
+  const docLc = doc.toLowerCase()
+  const queryLc = query.toLowerCase()
+  const builder = new RangeSetBuilder<Decoration>()
+  let pos = 0
+  let matchIdx = 0
+
+  while (true) {
+    const start = docLc.indexOf(queryLc, pos)
+    if (start === -1) break
+    const end = start + queryLc.length
+    builder.add(start, end, matchIdx === current ? currentMark : matchMark)
+    pos = start + 1
+    matchIdx++
+  }
+
+  return builder.finish()
+}
+
+const findHighlightPlugin = ViewPlugin.fromClass(
+  class {
+    decorations: DecorationSet
+
+    constructor(view: EditorView) {
+      this.decorations = buildFindDecorations(view)
+    }
+
+    update(update: ViewUpdate) {
+      if (
+        update.docChanged ||
+        update.transactions.some((tr) => tr.effects.some((e) => e.is(setFindEffect)))
+      ) {
+        this.decorations = buildFindDecorations(update.view)
+      }
+    }
+  },
+  { decorations: (v) => v.decorations },
+)
+
+// ── Editor theme ─────────────────────────────────────────────────────────────
 
 const editorTheme = EditorView.theme({
   '&': {
@@ -41,7 +108,17 @@ const editorTheme = EditorView.theme({
   '.cm-cursor': {
     borderLeftColor: '#7a1f2b',
   },
+  '.cm-find-match': {
+    backgroundColor: 'rgba(255, 190, 0, 0.35)',
+    borderRadius: '2px',
+  },
+  '.cm-find-current': {
+    backgroundColor: 'rgba(255, 130, 0, 0.55)',
+    borderRadius: '2px',
+  },
 })
+
+// ── Component ─────────────────────────────────────────────────────────────────
 
 export const EditorPane = forwardRef<EditorApi, EditorPaneProps>(function EditorPane(
   { content, onChange },
@@ -114,6 +191,37 @@ export const EditorPane = forwardRef<EditorApi, EditorPaneProps>(function Editor
     focus() {
       cmRef.current?.view?.focus()
     },
+    cmFindSet(query: string, current: number) {
+      const view = cmRef.current?.view
+      if (!view) return
+      view.dispatch({ effects: setFindEffect.of({ query, current }) })
+
+      // Scroll the target match into view and select it
+      if (query) {
+        const docLc = view.state.doc.toString().toLowerCase()
+        const queryLc = query.toLowerCase()
+        let pos = 0
+        let idx = 0
+        while (true) {
+          const start = docLc.indexOf(queryLc, pos)
+          if (start === -1) break
+          if (idx === current) {
+            view.dispatch({
+              selection: { anchor: start, head: start + queryLc.length },
+              scrollIntoView: true,
+            })
+            break
+          }
+          pos = start + 1
+          idx++
+        }
+      }
+    },
+    cmFindClear() {
+      const view = cmRef.current?.view
+      if (!view) return
+      view.dispatch({ effects: setFindEffect.of({ query: '', current: 0 }) })
+    },
   }))
 
   return (
@@ -128,7 +236,7 @@ export const EditorPane = forwardRef<EditorApi, EditorPaneProps>(function Editor
           highlightActiveLine: true,
           highlightActiveLineGutter: true,
         }}
-        extensions={[markdown(), EditorView.lineWrapping, editorTheme]}
+        extensions={[markdown(), EditorView.lineWrapping, editorTheme, findStateField, findHighlightPlugin]}
         onChange={onChange}
       />
     </section>
