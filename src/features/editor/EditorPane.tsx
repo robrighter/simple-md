@@ -3,6 +3,8 @@ import CodeMirror, { type ReactCodeMirrorRef } from '@uiw/react-codemirror'
 import { markdown } from '@codemirror/lang-markdown'
 import { EditorView, ViewPlugin, Decoration, type ViewUpdate, type DecorationSet } from '@codemirror/view'
 import { StateEffect, StateField, RangeSetBuilder } from '@codemirror/state'
+import { HighlightStyle, syntaxHighlighting } from '@codemirror/language'
+import { tags as t } from '@lezer/highlight'
 
 export type EditorApi = {
   getContent: () => string
@@ -84,36 +86,73 @@ const findHighlightPlugin = ViewPlugin.fromClass(
   { decorations: (v) => v.decorations },
 )
 
+// ── Syntax highlight style (maps lezer token tags → CSS vars) ────────────────
+
+const markdownHighlight = HighlightStyle.define([
+  // Headings — preserve weight/size cues, use theme ink
+  { tag: t.heading1, color: 'var(--ink)', fontWeight: 'bold', fontSize: '1.15em' },
+  { tag: t.heading2, color: 'var(--ink)', fontWeight: 'bold' },
+  { tag: [t.heading3, t.heading4, t.heading5, t.heading6], color: 'var(--ink)', fontWeight: 'bold' },
+  // Emphasis / strong — style only, no color divergence
+  { tag: t.emphasis, color: 'var(--ink)', fontStyle: 'italic' },
+  { tag: t.strong, color: 'var(--ink)', fontWeight: 'bold' },
+  // Everything else: use --ink so dark themes are white, light themes are dark
+  { tag: t.link, color: 'var(--ink)' },
+  { tag: t.url, color: 'var(--ink)' },
+  { tag: t.monospace, color: 'var(--ink)', fontFamily: 'var(--font-mono)' },
+  { tag: t.tagName, color: 'var(--ink)' },
+  { tag: t.processingInstruction, color: 'var(--ink)' },
+  { tag: t.punctuation, color: 'var(--ink)' },
+  { tag: t.meta, color: 'var(--ink)' },
+  { tag: t.quote, color: 'var(--ink)', fontStyle: 'italic' },
+  { tag: t.list, color: 'var(--ink)' },
+  { tag: t.contentSeparator, color: 'var(--ink)' },
+  { tag: t.keyword, color: 'var(--ink)' },
+  { tag: t.string, color: 'var(--ink)' },
+  { tag: t.number, color: 'var(--ink)' },
+  { tag: t.comment, color: 'var(--ink-muted)', fontStyle: 'italic' },
+  { tag: t.name, color: 'var(--ink)' },
+  { tag: t.propertyName, color: 'var(--ink)' },
+  { tag: t.variableName, color: 'var(--ink)' },
+  { tag: t.typeName, color: 'var(--ink)' },
+  { tag: t.operator, color: 'var(--ink)' },
+  { tag: t.bracket, color: 'var(--ink)' },
+])
+
 // ── Editor theme ─────────────────────────────────────────────────────────────
 
 const editorTheme = EditorView.theme({
   '&': {
     backgroundColor: 'transparent',
-    color: '#2f2417',
+    color: 'var(--ink)',
     height: '100%',
   },
   '.cm-gutters': {
     backgroundColor: 'transparent',
-    borderRight: '1px solid rgba(59, 43, 20, 0.08)',
+    color: 'var(--ink-muted)',
+    borderRight: '1px solid var(--border)',
   },
   '.cm-activeLineGutter': {
-    backgroundColor: 'rgba(122, 31, 43, 0.08)',
+    backgroundColor: 'color-mix(in srgb, var(--accent) 8%, transparent)',
   },
   '.cm-activeLine': {
-    backgroundColor: 'rgba(122, 31, 43, 0.05)',
+    backgroundColor: 'color-mix(in srgb, var(--accent) 5%, transparent)',
   },
   '.cm-selectionBackground': {
-    backgroundColor: 'rgba(74, 50, 71, 0.18) !important',
+    backgroundColor: 'color-mix(in srgb, var(--accent) 20%, transparent) !important',
+  },
+  '.cm-focused .cm-selectionBackground': {
+    backgroundColor: 'color-mix(in srgb, var(--accent) 28%, transparent) !important',
   },
   '.cm-cursor': {
-    borderLeftColor: '#7a1f2b',
+    borderLeftColor: 'var(--accent)',
   },
   '.cm-find-match': {
-    backgroundColor: 'rgba(255, 190, 0, 0.35)',
+    backgroundColor: 'rgba(255, 190, 0, 0.38)',
     borderRadius: '2px',
   },
   '.cm-find-current': {
-    backgroundColor: 'rgba(255, 130, 0, 0.55)',
+    backgroundColor: 'rgba(255, 130, 0, 0.58)',
     borderRadius: '2px',
   },
 })
@@ -236,7 +275,7 @@ export const EditorPane = forwardRef<EditorApi, EditorPaneProps>(function Editor
           highlightActiveLine: true,
           highlightActiveLineGutter: true,
         }}
-        extensions={[markdown(), EditorView.lineWrapping, editorTheme, findStateField, findHighlightPlugin]}
+        extensions={[markdown(), EditorView.lineWrapping, editorTheme, syntaxHighlighting(markdownHighlight, { fallback: true }), findStateField, findHighlightPlugin]}
         onChange={onChange}
       />
     </section>

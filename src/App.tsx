@@ -14,6 +14,8 @@ import {
 } from 'react'
 import type { EditorApi } from './features/editor/EditorPane'
 import { FindBar } from './features/find/FindBar'
+import { ThemePicker } from './features/theme/ThemePicker'
+import { useTheme } from './features/theme/useTheme'
 import { useDialog } from './components/DialogContext'
 import { ModeToggle } from './components/ModeToggle'
 import { StatusBar } from './components/StatusBar'
@@ -159,6 +161,8 @@ function App() {
   const [aiPanelOpen, setAiPanelOpen] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const ai = useAi()
+  const { themeId, setThemeId } = useTheme()
+  const [themePickerOpen, setThemePickerOpen] = useState(false)
   const editorRef = useRef<EditorApi | null>(null)
   const dialog = useDialog()
 
@@ -1265,6 +1269,15 @@ function App() {
           onImportUrl={() => void handleImportUrl()}
         />
         <div className="app-bar__right">
+          <button
+            type="button"
+            className="theme-btn"
+            title="Change theme"
+            onClick={() => setThemePickerOpen(true)}
+          >
+            <span className="theme-btn__icon" aria-hidden="true">◑</span>
+            Theme
+          </button>
           <ModeToggle mode={activeMode} onChange={handleModeChange} />
           {!__STORE_BUILD__ && (
             <AICallout
@@ -1384,7 +1397,7 @@ function App() {
                         query={findQuery}
                         current={findCurrent}
                         total={findTotal}
-                        disabled={activeMode === 'wysiwyg'}
+                        disabled={false}
                         onQueryChange={handleFindQueryChange}
                         onNext={handleFindNext}
                         onPrev={handleFindPrev}
@@ -1410,6 +1423,8 @@ function App() {
                             key={activeDocument.id}
                             content={activeDocument.content}
                             onChange={handleContentChange}
+                            findQuery={findOpen ? findQuery : undefined}
+                            findCurrentIndex={findOpen ? findCurrent : undefined}
                           />
                         ) : activeMode === 'split' ? (
                           <div className="split-layout">
@@ -1472,6 +1487,15 @@ function App() {
         />
       </main>
 
+      <ThemePicker
+        open={themePickerOpen}
+        currentThemeId={themeId}
+        onSelect={(id) => {
+          setThemeId(id)
+          setThemePickerOpen(false)
+        }}
+        onClose={() => setThemePickerOpen(false)}
+      />
     </div>
   )
 }

@@ -24,6 +24,42 @@ type InlineChartProps = {
   staticRender?: boolean
 }
 
+type ThemeColors = {
+  ink: string
+  inkSoft: string
+  inkMuted: string
+  border: string
+  panelStrong: string
+  accent: string
+  sea: string
+  mint: string
+  gold: string
+  rose: string
+  bg: string
+  bgStrong: string
+}
+
+function getVar(name: string): string {
+  return getComputedStyle(document.documentElement).getPropertyValue(name).trim()
+}
+
+function readThemeColors(): ThemeColors {
+  return {
+    ink: getVar('--ink'),
+    inkSoft: getVar('--ink-soft'),
+    inkMuted: getVar('--ink-muted'),
+    border: getVar('--border'),
+    panelStrong: getVar('--panel-strong'),
+    accent: getVar('--accent'),
+    sea: getVar('--sea'),
+    mint: getVar('--mint'),
+    gold: getVar('--gold'),
+    rose: getVar('--rose'),
+    bg: getVar('--bg'),
+    bgStrong: getVar('--bg-strong'),
+  }
+}
+
 export function InlineChart({ rawSpec, spec, staticRender = false }: InlineChartProps) {
   const parsed = spec ? { ok: true as const, spec } : safeParseChartSpec(rawSpec ?? '')
 
@@ -39,6 +75,7 @@ export function InlineChart({ rawSpec, spec, staticRender = false }: InlineChart
 
   const { spec: chart } = parsed
   const height = chart.height ?? 300
+  const colors = readThemeColors()
 
   return (
     <section className="chart-card">
@@ -50,10 +87,10 @@ export function InlineChart({ rawSpec, spec, staticRender = false }: InlineChart
       )}
       <div className="chart-card__body" style={{ height }}>
         {staticRender ? (
-          <StaticChart spec={chart} height={height} />
+          <StaticChart spec={chart} height={height} colors={colors} />
         ) : (
           <ResponsiveContainer width="100%" height="100%">
-            {renderChart(chart)}
+            {renderChart(chart, colors)}
           </ResponsiveContainer>
         )}
       </div>
@@ -61,29 +98,36 @@ export function InlineChart({ rawSpec, spec, staticRender = false }: InlineChart
   )
 }
 
-function StaticChart({ spec, height }: { spec: ChartSpec; height: number }) {
+function buildPalette(colors: ThemeColors): string[] {
+  return [colors.accent, colors.sea, colors.mint, colors.gold, colors.rose, colors.inkSoft]
+}
+
+function StaticChart({ spec, height, colors }: { spec: ChartSpec; height: number; colors: ThemeColors }) {
   const width = 720
 
   if (spec.type === 'pie') {
-    return <StaticPieChart spec={spec} width={width} height={height} />
+    return <StaticPieChart spec={spec} width={width} height={height} colors={colors} />
   }
 
-  return <StaticCartesianChart spec={spec} width={width} height={height} />
+  return <StaticCartesianChart spec={spec} width={width} height={height} colors={colors} />
 }
 
 function StaticCartesianChart({
   spec,
   width,
   height,
+  colors,
 }: {
   spec: ChartSpec
   width: number
   height: number
+  colors: ThemeColors
 }) {
   const margin = { top: 20, right: 28, bottom: 54, left: 56 }
   const chartWidth = width - margin.left - margin.right
   const chartHeight = height - margin.top - margin.bottom
   const series = spec.series ?? []
+  const palette = buildPalette(colors)
   const numericValues = spec.data.flatMap((row) =>
     series.map((entry) => numberValue(row[entry.key])),
   )
@@ -103,7 +147,7 @@ function StaticCartesianChart({
       role="img"
       aria-label={spec.title ?? 'Chart'}
     >
-      <rect x="0" y="0" width={width} height={height} rx="12" fill="#fffaf5" />
+      <rect x="0" y="0" width={width} height={height} rx="12" fill={colors.panelStrong} />
       {gridValues.map((value) => {
         const lineY = y(value)
         return (
@@ -113,15 +157,15 @@ function StaticCartesianChart({
               y1={lineY}
               x2={width - margin.right}
               y2={lineY}
-              stroke="rgba(59, 43, 20, 0.12)"
+              stroke={colors.border}
             />
-            <text x={margin.left - 10} y={lineY + 4} textAnchor="end" fontSize="12" fill="#7b6754">
+            <text x={margin.left - 10} y={lineY + 4} textAnchor="end" fontSize="12" fill={colors.inkMuted}>
               {formatTick(value)}
             </text>
           </g>
         )
       })}
-      <line x1={margin.left} y1={baseline} x2={width - margin.right} y2={baseline} stroke="#7b6754" />
+      <line x1={margin.left} y1={baseline} x2={width - margin.right} y2={baseline} stroke={colors.border} />
       {spec.data.map((row, index) => {
         const centerX = margin.left + xStep * index + xStep / 2
         const label = String(row[spec.xKey ?? 'name'] ?? index + 1)
@@ -132,19 +176,19 @@ function StaticCartesianChart({
             y={height - 18}
             textAnchor="middle"
             fontSize="12"
-            fill="#7b6754"
+            fill={colors.inkMuted}
           >
             {label}
           </text>
         )
       })}
       {spec.type === 'bar' &&
-        renderStaticBars(spec, { margin, chartWidth, chartHeight, xStep, y, baseline })}
+        renderStaticBars(spec, { margin, chartWidth, chartHeight, xStep, y, baseline }, palette)}
       {spec.type === 'line' &&
-        renderStaticLines(spec, { margin, xStep, y })}
+        renderStaticLines(spec, { margin, xStep, y }, palette)}
       {spec.type === 'area' &&
-        renderStaticAreas(spec, { margin, xStep, y, baseline })}
-      <StaticLegend spec={spec} width={width} y={height - 2} />
+        renderStaticAreas(spec, { margin, xStep, y, baseline }, palette)}
+      <StaticLegend spec={spec} width={width} y={height - 2} palette={palette} colors={colors} />
     </svg>
   )
 }
@@ -159,6 +203,7 @@ function renderStaticBars(
     y: (value: number) => number
     baseline: number
   },
+  palette: string[],
 ) {
   const series = spec.series ?? []
   const barGroupWidth = layout.xStep * 0.66
@@ -189,7 +234,7 @@ function renderStaticBars(
           width={Math.max(1, barWidth - 4)}
           height={Math.max(1, bottom - top)}
           rx="5"
-          fill={entry.color ?? '#7a1f2b'}
+          fill={entry.color ?? palette[seriesIndex % palette.length]}
         />
       )
     })
@@ -203,14 +248,15 @@ function renderStaticLines(
     xStep: number
     y: (value: number) => number
   },
+  palette: string[],
 ) {
-  return (spec.series ?? []).flatMap((entry) => {
+  return (spec.series ?? []).flatMap((entry, seriesIndex) => {
+    const color = entry.color ?? palette[seriesIndex % palette.length]
     const points = spec.data.map((row, index) => ({
       x: layout.margin.left + layout.xStep * index + layout.xStep / 2,
       y: layout.y(numberValue(row[entry.key])),
     }))
     const path = points.map((point, index) => `${index === 0 ? 'M' : 'L'} ${point.x} ${point.y}`).join(' ')
-    const color = entry.color ?? '#315d74'
 
     return [
       <path
@@ -237,13 +283,14 @@ function renderStaticAreas(
     y: (value: number) => number
     baseline: number
   },
+  palette: string[],
 ) {
-  return (spec.series ?? []).flatMap((entry) => {
+  return (spec.series ?? []).flatMap((entry, seriesIndex) => {
+    const color = entry.color ?? palette[seriesIndex % palette.length]
     const points = spec.data.map((row, index) => ({
       x: layout.margin.left + layout.xStep * index + layout.xStep / 2,
       y: layout.y(numberValue(row[entry.key])),
     }))
-    const color = entry.color ?? '#4f846f'
     const linePath = points.map((point, index) => `${index === 0 ? 'M' : 'L'} ${point.x} ${point.y}`).join(' ')
     const areaPath = `${linePath} L ${points.at(-1)?.x ?? 0} ${layout.baseline} L ${points[0]?.x ?? 0} ${layout.baseline} Z`
 
@@ -266,11 +313,14 @@ function StaticPieChart({
   spec,
   width,
   height,
+  colors,
 }: {
   spec: ChartSpec
   width: number
   height: number
+  colors: ThemeColors
 }) {
+  const palette = buildPalette(colors)
   const labelKey =
     spec.xKey ??
     Object.keys(spec.data[0] ?? {}).find((key) => typeof spec.data[0]?.[key] === 'string') ??
@@ -304,13 +354,13 @@ function StaticPieChart({
       role="img"
       aria-label={spec.title ?? 'Pie chart'}
     >
-      <rect x="0" y="0" width={width} height={height} rx="12" fill="#fffaf5" />
+      <rect x="0" y="0" width={width} height={height} rx="12" fill={colors.panelStrong} />
       {slices.map(({ path, index }) => (
-          <path
-            key={`slice-${index}`}
-            d={path}
-            fill={spec.series?.[index]?.color ?? piePalette[index % piePalette.length]}
-          />
+        <path
+          key={`slice-${index}`}
+          d={path}
+          fill={spec.series?.[index]?.color ?? palette[index % palette.length]}
+        />
       ))}
       {spec.data.map((row, index) => (
         <g key={`legend-${index}`} transform={`translate(470 ${54 + index * 28})`}>
@@ -318,9 +368,9 @@ function StaticPieChart({
             width="14"
             height="14"
             rx="3"
-            fill={spec.series?.[index]?.color ?? piePalette[index % piePalette.length]}
+            fill={spec.series?.[index]?.color ?? palette[index % palette.length]}
           />
-          <text x="24" y="12" fontSize="13" fill="#5d4b3f">
+          <text x="24" y="12" fontSize="13" fill={colors.inkSoft}>
             {String(row[labelKey] ?? `Slice ${index + 1}`)}
           </text>
         </g>
@@ -329,7 +379,19 @@ function StaticPieChart({
   )
 }
 
-function StaticLegend({ spec, width, y }: { spec: ChartSpec; width: number; y: number }) {
+function StaticLegend({
+  spec,
+  width,
+  y,
+  palette,
+  colors,
+}: {
+  spec: ChartSpec
+  width: number
+  y: number
+  palette: string[]
+  colors: ThemeColors
+}) {
   const items = spec.series ?? []
   const startX = Math.max(24, width / 2 - items.length * 62)
 
@@ -337,8 +399,8 @@ function StaticLegend({ spec, width, y }: { spec: ChartSpec; width: number; y: n
     <>
       {items.map((entry, index) => (
         <g key={`legend-${entry.key}`} transform={`translate(${startX + index * 124} ${y - 16})`}>
-          <rect width="14" height="14" rx="3" fill={entry.color ?? '#7a1f2b'} />
-          <text x="22" y="12" fontSize="12" fill="#5d4b3f">
+          <rect width="14" height="14" rx="3" fill={entry.color ?? palette[index % palette.length]} />
+          <text x="22" y="12" fontSize="12" fill={colors.inkSoft}>
             {entry.label ?? entry.key}
           </text>
         </g>
@@ -395,20 +457,25 @@ function formatTick(value: number) {
   return Number.isInteger(value) ? String(value) : value.toFixed(1)
 }
 
-function renderChart(spec: ChartSpec) {
+function renderChart(spec: ChartSpec, colors: ThemeColors) {
+  const palette = buildPalette(colors)
+
+  const tooltipStyle = {
+    borderRadius: 10,
+    border: `1px solid ${colors.border}`,
+    background: colors.panelStrong,
+    color: colors.ink,
+    boxShadow: '0 4px 16px rgba(0, 0, 0, 0.18)',
+    fontSize: 13,
+  }
+
   const sharedAxes = (
     <>
-      <CartesianGrid stroke="rgba(59, 43, 20, 0.08)" vertical={false} />
-      <XAxis dataKey={spec.xKey} stroke="#7b6754" tickLine={false} axisLine={false} />
-      <YAxis stroke="#7b6754" tickLine={false} axisLine={false} />
-      <Tooltip
-        contentStyle={{
-          borderRadius: 18,
-          border: '1px solid rgba(59, 43, 20, 0.1)',
-          boxShadow: '0 10px 40px rgba(72, 49, 25, 0.12)',
-        }}
-      />
-      <Legend />
+      <CartesianGrid stroke={colors.border} vertical={false} />
+      <XAxis dataKey={spec.xKey} stroke={colors.inkMuted} tick={{ fill: colors.inkMuted }} tickLine={false} axisLine={false} />
+      <YAxis stroke={colors.inkMuted} tick={{ fill: colors.inkMuted }} tickLine={false} axisLine={false} />
+      <Tooltip contentStyle={tooltipStyle} cursor={{ fill: 'rgba(128,128,128,0.06)' }} />
+      <Legend wrapperStyle={{ color: colors.inkSoft, fontSize: 13 }} />
     </>
   )
 
@@ -416,12 +483,12 @@ function renderChart(spec: ChartSpec) {
     return (
       <BarChart data={spec.data}>
         {sharedAxes}
-        {spec.series?.map((series) => (
+        {spec.series?.map((series, index) => (
           <Bar
             key={series.key}
             dataKey={series.key}
             name={series.label ?? series.key}
-            fill={series.color ?? '#7a1f2b'}
+            fill={series.color ?? palette[index % palette.length]}
             isAnimationActive={false}
             stackId={spec.stacked ? 'stack' : undefined}
             radius={[8, 8, 0, 0]}
@@ -435,12 +502,12 @@ function renderChart(spec: ChartSpec) {
     return (
       <LineChart data={spec.data}>
         {sharedAxes}
-        {spec.series?.map((series) => (
+        {spec.series?.map((series, index) => (
           <Line
             key={series.key}
             dataKey={series.key}
             name={series.label ?? series.key}
-            stroke={series.color ?? '#315d74'}
+            stroke={series.color ?? palette[index % palette.length]}
             strokeWidth={3}
             dot={{ r: 2.5 }}
             activeDot={{ r: 5 }}
@@ -455,19 +522,22 @@ function renderChart(spec: ChartSpec) {
     return (
       <AreaChart data={spec.data}>
         {sharedAxes}
-        {spec.series?.map((series) => (
-          <Area
-            key={series.key}
-            dataKey={series.key}
-            name={series.label ?? series.key}
-            fill={series.color ?? '#4f846f'}
-            stroke={series.color ?? '#4f846f'}
-            fillOpacity={0.24}
-            strokeWidth={3}
-            isAnimationActive={false}
-            stackId={spec.stacked ? 'stack' : undefined}
-          />
-        ))}
+        {spec.series?.map((series, index) => {
+          const color = series.color ?? palette[index % palette.length]
+          return (
+            <Area
+              key={series.key}
+              dataKey={series.key}
+              name={series.label ?? series.key}
+              fill={color}
+              stroke={color}
+              fillOpacity={0.22}
+              strokeWidth={3}
+              isAnimationActive={false}
+              stackId={spec.stacked ? 'stack' : undefined}
+            />
+          )
+        })}
       </AreaChart>
     )
   }
@@ -480,14 +550,8 @@ function renderChart(spec: ChartSpec) {
 
   return (
     <PieChart>
-      <Tooltip
-        contentStyle={{
-          borderRadius: 18,
-          border: '1px solid rgba(59, 43, 20, 0.1)',
-          boxShadow: '0 10px 40px rgba(72, 49, 25, 0.12)',
-        }}
-      />
-      <Legend />
+      <Tooltip contentStyle={tooltipStyle} />
+      <Legend wrapperStyle={{ color: colors.inkSoft, fontSize: 13 }} />
       <Pie
         data={spec.data}
         dataKey={pieKey}
@@ -500,12 +564,10 @@ function renderChart(spec: ChartSpec) {
         {spec.data.map((entry, index) => (
           <Cell
             key={`${entry[labelKey] ?? index}`}
-            fill={spec.series?.[index]?.color ?? piePalette[index % piePalette.length]}
+            fill={spec.series?.[index]?.color ?? palette[index % palette.length]}
           />
         ))}
       </Pie>
     </PieChart>
   )
 }
-
-const piePalette = ['#7a1f2b', '#4a3247', '#5a7a55', '#c89866', '#b54a4a', '#3d5a6c']
