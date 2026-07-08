@@ -8,6 +8,8 @@ type StatusBarProps = {
   words: number
   lines: number
   characters: number
+  gitLabel?: string | null
+  onOpenGitDiff?: () => void
   onOpenSourceUrl?: () => void
 }
 
@@ -19,18 +21,30 @@ export function StatusBar({
   words,
   lines,
   characters,
+  gitLabel,
+  onOpenGitDiff,
   onOpenSourceUrl,
 }: StatusBarProps) {
   return (
     <footer className="status-bar">
       <div className="status-bar__cluster">
         <span className="status-bar__message">{message}</span>
-        <span data-dirty={isDirty}>{isDirty ? '● Unsaved' : '✓ Saved'}</span>
+        <span data-dirty={isDirty}>{isDirty ? 'Unsaved' : 'Saved'}</span>
+        {gitLabel && (
+          <button
+            type="button"
+            className="status-bar__git"
+            onClick={onOpenGitDiff}
+            title="Show Git diff"
+          >
+            {gitLabel}
+          </button>
+        )}
       </div>
       <div className="status-bar__cluster status-bar__cluster--meta">
         <span>{mode}</span>
         <span>
-          {words} words · {lines} lines · {characters} chars
+          {words} words / {lines} lines / {characters} chars
         </span>
         {path && (
           onOpenSourceUrl ? (

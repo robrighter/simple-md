@@ -5,6 +5,7 @@ import { open } from '@tauri-apps/plugin-dialog'
 import { openPath, openUrl } from '@tauri-apps/plugin-opener'
 import type {
   DocumentPayload,
+  GitFileSnapshot,
   ImportedDocumentPayload,
   TreeNode,
   WorkspaceSnapshot,
@@ -104,6 +105,18 @@ export async function deletePath(path: string) {
 
 export async function fetchRemoteMarkdown(url: string) {
   return invoke<ImportedDocumentPayload>('fetch_remote_markdown', { url })
+}
+
+export async function getGitFileSnapshot(path: string): Promise<GitFileSnapshot> {
+  if (!isTauri()) {
+    return {
+      available: false,
+      tracked: false,
+      error: 'Git awareness is available in the desktop app.',
+    }
+  }
+
+  return invoke<GitFileSnapshot>('git_file_snapshot', { path })
 }
 
 export async function openedTargets() {

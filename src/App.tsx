@@ -28,6 +28,7 @@ import { useAi } from './features/ai/useAi'
 import { createWelcomeDocument } from './app/sampleDocument'
 import type {
   DocumentMode,
+  GitFileSnapshot,
   ImportedDocumentPayload,
   OpenDocument,
   TreeNode,
@@ -40,6 +41,7 @@ import {
   deletePath,
   exportDocument,
   fetchRemoteMarkdown,
+  getGitFileSnapshot,
   getDocumentsDir,
   listWorkspace,
   listenForOpenedTargets,
@@ -62,6 +64,13 @@ import {
   replacePathPrefix,
 } from './lib/document'
 import { createExportHtml, printDocument } from './lib/export'
+import { GitDiffModal } from './features/git/GitDiffModal'
+import {
+  buildLineDiff,
+  formatGitChangeSummary,
+  gitLineChangesFromDiff,
+  summarizeLineChanges,
+} from './features/git/gitDiff'
 
 const RECENTS_KEY = 'simple-md-recents'
 const EXTERNAL_CHANGE_CHECK_INTERVAL_MS = 4000
@@ -163,13 +172,42 @@ function App() {
   const ai = useAi()
   const { themeId, setThemeId } = useTheme()
   const [themePickerOpen, setThemePickerOpen] = useState(false)
+  const [gitSnapshots, setGitSnapshots] = useState<Record<string, GitFileSnapshot>>({})
+  const [gitDiffOpen, setGitDiffOpen] = useState(false)
   const editorRef = useRef<EditorApi | null>(null)
   const dialog = useDialog()
 
   const activeDocument =
     documents.find((document) => document.id === activeDocumentId) ?? documents[0] ?? null
+  const activeDocumentPath = activeDocument?.path ?? null
+  const activeDocumentSavedVersion = activeDocument?.savedVersion ?? null
   const activeMode = activeDocument?.mode ?? 'source'
   const deferredContent = useDeferredValue(activeDocument?.content ?? '')
+  const activeGitSnapshot = activeDocumentPath ? gitSnapshots[activeDocumentPath] : undefined
+  const activeGitAvailable = Boolean(
+    activeGitSnapshot?.available &&
+      activeGitSnapshot.tracked &&
+      typeof activeGitSnapshot.baseContent === 'string',
+  )
+  const activeGitDiffRows = useMemo(() => {
+    if (!activeDocument || !activeGitAvailable) {
+      return []
+    }
+
+    return buildLineDiff(activeGitSnapshot?.baseContent ?? '', activeDocument.content)
+  }, [activeDocument, activeGitAvailable, activeGitSnapshot?.baseContent])
+  const activeGitLineChanges = useMemo(() => {
+    if (!activeDocument || !activeGitAvailable) {
+      return []
+    }
+
+    return gitLineChangesFromDiff(activeGitDiffRows, activeDocument.content)
+  }, [activeDocument, activeGitAvailable, activeGitDiffRows])
+  const activeGitSummary = useMemo(
+    () => summarizeLineChanges(activeGitLineChanges),
+    [activeGitLineChanges],
+  )
+  const activeGitLabel = activeGitAvailable ? formatGitChangeSummary(activeGitSummary) : null
 
   const [findOpen, setFindOpen] = useState(false)
   const [findQuery, setFindQuery] = useState('')
@@ -205,6 +243,33 @@ function App() {
       characters: activeDocument.content.length,
     }
   }, [activeDocument])
+
+  useEffect(() => {
+    if (!activeDocumentPath) {
+      return
+    }
+
+    let cancelled = false
+
+    const loadGitSnapshot = async () => {
+      const snapshot = await getGitFileSnapshot(activeDocumentPath)
+
+      if (cancelled) {
+        return
+      }
+
+      setGitSnapshots((current) => ({
+        ...current,
+        [activeDocumentPath]: snapshot,
+      }))
+    }
+
+    void loadGitSnapshot()
+
+    return () => {
+      cancelled = true
+    }
+  }, [activeDocumentPath, activeDocumentSavedVersion])
 
   useEffect(() => {
     saveRecents(recents)
@@ -365,11 +430,22 @@ function App() {
 
   // Reset find state when active document changes
   useEffect(() => {
-    setFindOpen(false)
-    setFindQuery('')
-    setFindCurrent(0)
-    editorRef.current?.cmFindClear()
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    let cancelled = false
+
+    queueMicrotask(() => {
+      if (cancelled) {
+        return
+      }
+
+      setFindOpen(false)
+      setFindQuery('')
+      setFindCurrent(0)
+      editorRef.current?.cmFindClear()
+    })
+
+    return () => {
+      cancelled = true
+    }
   }, [activeDocumentId])
 
   // ───────────────────────────────────────────────────────────────────────────
@@ -1433,6 +1509,8 @@ function App() {
                               ref={editorRef}
                               content={activeDocument.content}
                               onChange={handleContentChange}
+                              gitLineChanges={activeGitLineChanges}
+                              onOpenGitDiff={() => setGitDiffOpen(true)}
                             />
                             <MarkdownPreview
                               className="panel panel--preview"
@@ -1446,6 +1524,8 @@ function App() {
                             ref={editorRef}
                             content={activeDocument.content}
                             onChange={handleContentChange}
+                            gitLineChanges={activeGitLineChanges}
+                            onOpenGitDiff={() => setGitDiffOpen(true)}
                           />
                         )}
                       </>
@@ -1479,6 +1559,8 @@ function App() {
           words={stats.words}
           lines={stats.lines}
           characters={stats.characters}
+          gitLabel={activeGitLabel}
+          onOpenGitDiff={() => setGitDiffOpen(true)}
           onOpenSourceUrl={
             activeDocument?.sourceUrl
               ? () => void openPathExternally(activeDocument.sourceUrl as string)
@@ -1496,6 +1578,16 @@ function App() {
         }}
         onClose={() => setThemePickerOpen(false)}
       />
+
+      {gitDiffOpen && activeDocument?.path && activeGitAvailable && activeGitSnapshot && (
+        <GitDiffModal
+          path={activeDocument.path}
+          snapshot={activeGitSnapshot}
+          rows={activeGitDiffRows}
+          summary={activeGitSummary}
+          onClose={() => setGitDiffOpen(false)}
+        />
+      )}
     </div>
   )
 }

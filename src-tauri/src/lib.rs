@@ -3,6 +3,7 @@ mod ai;
 use std::{
     fs,
     path::{Path, PathBuf},
+    process::{Command, Output},
     sync::Mutex,
     time::{Duration, UNIX_EPOCH},
 };
@@ -59,6 +60,19 @@ struct ImportedDocumentPayload {
     content_type: Option<String>,
     title: String,
     content: String,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct GitFileSnapshot {
+    available: bool,
+    tracked: bool,
+    repo_root: Option<String>,
+    relative_path: Option<String>,
+    status: Option<String>,
+    base_content: Option<String>,
+    head_label: Option<String>,
+    error: Option<String>,
 }
 
 #[tauri::command]
@@ -299,6 +313,51 @@ async fn fetch_remote_markdown(url: String) -> Result<ImportedDocumentPayload, S
     })
 }
 
+#[tauri::command]
+fn git_file_snapshot(path: String) -> Result<GitFileSnapshot, String> {
+    let target = PathBuf::from(&path);
+    let cwd = target
+        .parent()
+        .filter(|parent| parent.exists())
+        .unwrap_or_else(|| Path::new("."));
+
+    let repo_output = match run_git(["rev-parse", "--show-toplevel"], cwd) {
+        Ok(output) if output.status.success() => output,
+        Ok(output) => {
+            return Ok(git_unavailable(
+                String::from_utf8_lossy(&output.stderr).trim(),
+            ));
+        }
+        Err(error) => {
+            return Ok(git_unavailable(&format!(
+                "Git is not available for this file: {error}"
+            )));
+        }
+    };
+
+    let repo_root_text = String::from_utf8_lossy(&repo_output.stdout)
+        .trim()
+        .to_string();
+    let repo_root = PathBuf::from(&repo_root_text);
+    let relative_path = git_relative_path(&repo_root, &target);
+    let relative_pathspec = relative_path.replace('\\', "/");
+    let tracked = git_path_is_tracked(&repo_root, &relative_pathspec);
+    let status = git_status_for_path(&repo_root, &relative_pathspec);
+    let base_content = git_head_content(&repo_root, &relative_pathspec).unwrap_or_default();
+    let head_label = git_head_label(&repo_root).unwrap_or_else(|| "HEAD".to_string());
+
+    Ok(GitFileSnapshot {
+        available: true,
+        tracked,
+        repo_root: Some(normalize_path(&repo_root)),
+        relative_path: Some(relative_pathspec),
+        status,
+        base_content: Some(base_content),
+        head_label: Some(head_label),
+        error: None,
+    })
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let mut builder = tauri::Builder::default()
@@ -343,6 +402,7 @@ pub fn run() {
             rename_path,
             delete_path,
             fetch_remote_markdown,
+            git_file_snapshot,
             opened_targets,
             clear_opened_targets,
             ai::ai_get_settings,
@@ -529,6 +589,90 @@ fn base_url(url: &Url) -> String {
     }
 
     base.to_string()
+}
+
+fn run_git<const N: usize>(args: [&str; N], cwd: &Path) -> anyhow::Result<Output> {
+    Command::new("git")
+        .args(args)
+        .current_dir(cwd)
+        .output()
+        .context("failed to run git")
+}
+
+fn git_unavailable(message: &str) -> GitFileSnapshot {
+    GitFileSnapshot {
+        available: false,
+        tracked: false,
+        repo_root: None,
+        relative_path: None,
+        status: None,
+        base_content: None,
+        head_label: None,
+        error: if message.trim().is_empty() {
+            Some("This file is not inside a Git working directory.".to_string())
+        } else {
+            Some(message.trim().to_string())
+        },
+    }
+}
+
+fn git_relative_path(repo_root: &Path, target: &Path) -> String {
+    target
+        .strip_prefix(repo_root)
+        .unwrap_or(target)
+        .to_string_lossy()
+        .trim_start_matches(std::path::MAIN_SEPARATOR)
+        .to_string()
+}
+
+fn git_path_is_tracked(repo_root: &Path, relative_path: &str) -> bool {
+    run_git(["ls-files", "--error-unmatch", "--", relative_path], repo_root)
+        .map(|output| output.status.success())
+        .unwrap_or(false)
+}
+
+fn git_status_for_path(repo_root: &Path, relative_path: &str) -> Option<String> {
+    run_git(
+        ["status", "--porcelain", "--untracked-files=normal", "--", relative_path],
+        repo_root,
+    )
+    .ok()
+    .filter(|output| output.status.success())
+    .map(|output| String::from_utf8_lossy(&output.stdout).trim().to_string())
+    .filter(|value| !value.is_empty())
+}
+
+fn git_head_content(repo_root: &Path, relative_path: &str) -> Option<String> {
+    let revision = format!("HEAD:{relative_path}");
+    let output = Command::new("git")
+        .args(["show", "--no-ext-diff", &revision])
+        .current_dir(repo_root)
+        .output()
+        .ok()?;
+
+    if output.status.success() {
+        Some(String::from_utf8_lossy(&output.stdout).to_string())
+    } else {
+        None
+    }
+}
+
+fn git_head_label(repo_root: &Path) -> Option<String> {
+    let branch = run_git(["branch", "--show-current"], repo_root)
+        .ok()
+        .filter(|output| output.status.success())
+        .map(|output| String::from_utf8_lossy(&output.stdout).trim().to_string())
+        .filter(|value| !value.is_empty());
+
+    if branch.is_some() {
+        return branch;
+    }
+
+    run_git(["rev-parse", "--short", "HEAD"], repo_root)
+        .ok()
+        .filter(|output| output.status.success())
+        .map(|output| String::from_utf8_lossy(&output.stdout).trim().to_string())
+        .filter(|value| !value.is_empty())
 }
 
 fn normalize_arg_targets(args: Vec<String>, cwd: Option<PathBuf>) -> Vec<String> {

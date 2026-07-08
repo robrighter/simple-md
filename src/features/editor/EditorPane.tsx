@@ -1,10 +1,19 @@
-import { forwardRef, useImperativeHandle, useRef } from 'react'
+import { forwardRef, useImperativeHandle, useMemo, useRef } from 'react'
 import CodeMirror, { type ReactCodeMirrorRef } from '@uiw/react-codemirror'
 import { markdown } from '@codemirror/lang-markdown'
-import { EditorView, ViewPlugin, Decoration, type ViewUpdate, type DecorationSet } from '@codemirror/view'
+import {
+  Decoration,
+  EditorView,
+  GutterMarker,
+  ViewPlugin,
+  gutter,
+  type DecorationSet,
+  type ViewUpdate,
+} from '@codemirror/view'
 import { StateEffect, StateField, RangeSetBuilder } from '@codemirror/state'
 import { HighlightStyle, syntaxHighlighting } from '@codemirror/language'
 import { tags as t } from '@lezer/highlight'
+import type { GitLineChange, GitLineChangeKind } from '../../app/types'
 
 export type EditorApi = {
   getContent: () => string
@@ -22,6 +31,8 @@ export type EditorApi = {
 type EditorPaneProps = {
   content: string
   onChange: (value: string) => void
+  gitLineChanges?: GitLineChange[]
+  onOpenGitDiff?: () => void
 }
 
 // ── Find highlight infrastructure ────────────────────────────────────────────
@@ -155,15 +166,79 @@ const editorTheme = EditorView.theme({
     backgroundColor: 'rgba(255, 130, 0, 0.58)',
     borderRadius: '2px',
   },
+  '.cm-git-gutter': {
+    width: '8px',
+    borderRight: '0',
+  },
+  '.cm-git-marker': {
+    display: 'block',
+    width: '4px',
+    height: '1.35em',
+    margin: '0 auto',
+    borderRadius: '999px',
+  },
+  '.cm-git-marker--added': {
+    backgroundColor: '#4f8f55',
+  },
+  '.cm-git-marker--modified': {
+    backgroundColor: '#c89866',
+  },
+  '.cm-git-marker--deleted': {
+    backgroundColor: '#b54a4a',
+  },
 })
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
+class GitChangeMarker extends GutterMarker {
+  private kind: GitLineChangeKind
+
+  constructor(kind: GitLineChangeKind) {
+    super()
+    this.kind = kind
+  }
+
+  eq(other: GutterMarker) {
+    return other instanceof GitChangeMarker && other.kind === this.kind
+  }
+
+  toDOM() {
+    const marker = document.createElement('span')
+    marker.className = `cm-git-marker cm-git-marker--${this.kind}`
+    marker.title =
+      this.kind === 'added'
+        ? 'Added since HEAD'
+        : this.kind === 'modified'
+          ? 'Changed since HEAD'
+          : 'Deleted lines nearby'
+    return marker
+  }
+}
+
+function gitChangesGutter(changes: GitLineChange[]) {
+  const changesByLine = new Map(changes.map((change) => [change.line, change.kind]))
+
+  return gutter({
+    class: 'cm-git-gutter',
+    lineMarker(view, line) {
+      const lineNumber = view.state.doc.lineAt(line.from).number
+      const kind = changesByLine.get(lineNumber)
+
+      return kind ? new GitChangeMarker(kind) : null
+    },
+    initialSpacer: () => new GitChangeMarker('modified'),
+  })
+}
+
 export const EditorPane = forwardRef<EditorApi, EditorPaneProps>(function EditorPane(
-  { content, onChange },
+  { content, onChange, gitLineChanges = [], onOpenGitDiff },
   ref,
 ) {
   const cmRef = useRef<ReactCodeMirrorRef | null>(null)
+  const gitExtensions = useMemo(
+    () => (gitLineChanges.length > 0 ? [gitChangesGutter(gitLineChanges)] : []),
+    [gitLineChanges],
+  )
 
   useImperativeHandle(ref, () => ({
     getContent() {
@@ -264,7 +339,27 @@ export const EditorPane = forwardRef<EditorApi, EditorPaneProps>(function Editor
   }))
 
   return (
-    <section className="editor-shell">
+    <section
+      className={`editor-shell ${
+        gitLineChanges.length > 0 && onOpenGitDiff ? 'editor-shell--git-clickable' : ''
+      }`}
+      onClickCapture={(event) => {
+        if (gitLineChanges.length === 0 || !onOpenGitDiff) {
+          return
+        }
+
+        const target = event.target
+        const gutterBand = event.clientX - event.currentTarget.getBoundingClientRect().left
+
+        if (
+          (target instanceof Element && target.closest('.cm-gutters')) ||
+          gutterBand <= 96
+        ) {
+          event.preventDefault()
+          onOpenGitDiff()
+        }
+      }}
+    >
       <CodeMirror
         ref={cmRef}
         value={content}
@@ -275,7 +370,15 @@ export const EditorPane = forwardRef<EditorApi, EditorPaneProps>(function Editor
           highlightActiveLine: true,
           highlightActiveLineGutter: true,
         }}
-        extensions={[markdown(), EditorView.lineWrapping, editorTheme, syntaxHighlighting(markdownHighlight, { fallback: true }), findStateField, findHighlightPlugin]}
+        extensions={[
+          markdown(),
+          EditorView.lineWrapping,
+          editorTheme,
+          syntaxHighlighting(markdownHighlight, { fallback: true }),
+          findStateField,
+          findHighlightPlugin,
+          ...gitExtensions,
+        ]}
         onChange={onChange}
       />
     </section>

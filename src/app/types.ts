@@ -66,6 +66,24 @@ export type ImportedDocumentPayload = {
   content: string
 }
 
+export type GitFileSnapshot = {
+  available: boolean
+  tracked: boolean
+  repoRoot?: string | null
+  relativePath?: string | null
+  status?: string | null
+  baseContent?: string | null
+  headLabel?: string | null
+  error?: string | null
+}
+
+export type GitLineChangeKind = 'added' | 'modified' | 'deleted'
+
+export type GitLineChange = {
+  line: number
+  kind: GitLineChangeKind
+}
+
 export type ChartPoint = Record<string, string | number | null>
 
 export type ChartType = 'bar' | 'line' | 'area' | 'pie'
