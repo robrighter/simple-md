@@ -62,7 +62,6 @@ const noopApi: AiApi = {
 }
 
 export function useAi(): AiApi {
-  if (__STORE_BUILD__) return noopApi
   const [settings, setSettings] = useState<AiSettings | null>(null)
   const [models, setModels] = useState<ModelStatus[]>([])
   const [runtime, setRuntime] = useState<RuntimeStatus>(initialRuntime)
@@ -94,6 +93,8 @@ export function useAi(): AiApi {
   })
 
   useEffect(() => {
+    if (__STORE_BUILD__) return
+
     let cancelled = false
     let unlisten: (() => void) | undefined
 
@@ -239,6 +240,8 @@ export function useAi(): AiApi {
     },
     [runtime, chat],
   )
+
+  if (__STORE_BUILD__) return noopApi
 
   return {
     state: { settings, models, runtime, download, chat, busy },

@@ -16,6 +16,12 @@ use url::Url;
 
 use ai::AiState;
 
+#[cfg(windows)]
+use std::os::windows::process::CommandExt;
+
+#[cfg(windows)]
+const CREATE_NO_WINDOW: u32 = 0x08000000;
+
 #[derive(Default)]
 struct OpenedTargets(Mutex<Vec<String>>);
 
@@ -592,11 +598,13 @@ fn base_url(url: &Url) -> String {
 }
 
 fn run_git<const N: usize>(args: [&str; N], cwd: &Path) -> anyhow::Result<Output> {
-    Command::new("git")
-        .args(args)
-        .current_dir(cwd)
-        .output()
-        .context("failed to run git")
+    let mut command = Command::new("git");
+    command.args(args).current_dir(cwd);
+
+    #[cfg(windows)]
+    command.creation_flags(CREATE_NO_WINDOW);
+
+    command.output().context("failed to run git")
 }
 
 fn git_unavailable(message: &str) -> GitFileSnapshot {
@@ -644,11 +652,7 @@ fn git_status_for_path(repo_root: &Path, relative_path: &str) -> Option<String> 
 
 fn git_head_content(repo_root: &Path, relative_path: &str) -> Option<String> {
     let revision = format!("HEAD:{relative_path}");
-    let output = Command::new("git")
-        .args(["show", "--no-ext-diff", &revision])
-        .current_dir(repo_root)
-        .output()
-        .ok()?;
+    let output = run_git(["show", "--no-ext-diff", &revision], repo_root).ok()?;
 
     if output.status.success() {
         Some(String::from_utf8_lossy(&output.stdout).to_string())

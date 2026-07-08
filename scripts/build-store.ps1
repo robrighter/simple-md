@@ -10,7 +10,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 $RepoRoot  = Split-Path $PSScriptRoot -Parent
-$Version   = "1.1.0.0"
+$Version   = "1.1.2.0"
 $MakeAppx  = "C:\Program Files (x86)\Windows Kits\10\bin\10.0.26100.0\x64\makeappx.exe"
 $TauriCmd  = Join-Path $RepoRoot "node_modules\.bin\tauri.cmd"
 
