@@ -19,11 +19,22 @@ export async function createExportHtml({ title, content, baseUrl }: ExportHtmlOp
     root.render(<MarkdownPreview content={content} baseUrl={baseUrl} staticCharts />)
   })
 
-  const previewMarkup = container.innerHTML
-  root.unmount()
-  document.body.removeChild(container)
+  try {
+    // Mermaid diagrams render asynchronously; wait (bounded) until they settle.
+    const deadline = Date.now() + 15_000
+    while (container.querySelector('[data-mermaid-pending]') && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 50))
+    }
 
-  return buildExportHtml(title, previewMarkup)
+    if (container.querySelector('[data-mermaid-pending]')) {
+      throw new Error('A Mermaid diagram did not finish rendering in time, so nothing was exported.')
+    }
+
+    return buildExportHtml(title, container.innerHTML)
+  } finally {
+    root.unmount()
+    document.body.removeChild(container)
+  }
 }
 
 export function printDocument(html: string): void {
@@ -72,6 +83,9 @@ function buildExportHtml(title: string, previewMarkup: string) {
       h1:first-child { margin-top: 0; }
       a { color: #0f766e; }
       img { display: block; max-width: 100%; height: auto; }
+      .mermaid-diagram { margin: 1.2rem 0; text-align: center; }
+      .mermaid-diagram svg { max-width: 100%; height: auto; }
+      .mermaid-error { white-space: pre-wrap; color: #b91c1c; }
       .chart-static-svg {
         display: block;
         width: 100%;

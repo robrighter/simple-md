@@ -210,15 +210,70 @@ Most chart blocks use these fields:
 
 If you leave out \`series\`, Simple MD will try to infer numeric series from your data.
 
-## 9. Import from the Web
+## 9. Diagrams
+
+Code blocks tagged \`mermaid\` become diagrams. Hover a diagram and click the expand button, or double-click it, to open it full screen, then scroll to pan, hold **Ctrl** and scroll to zoom, or use the zoom buttons. In **Hybrid** mode the source stays editable and the diagram updates as you type.
+
+### Flowchart
+
+\`\`\`mermaid
+flowchart TD
+  A[Write Markdown] --> B{Need a picture?}
+  B -- Yes --> C[Add a mermaid block]
+  B -- No --> D[Keep writing]
+  C --> E[Diagram renders in place]
+  D --> E
+\`\`\`
+
+### Sequence Diagram
+
+\`\`\`mermaid
+sequenceDiagram
+  participant You
+  participant Editor as Simple MD
+  participant Disk as Local file
+  You->>Editor: Edit Markdown
+  Editor->>Disk: Save
+  Disk-->>Editor: Version confirmed
+  Editor-->>You: Saved
+\`\`\`
+
+### State Diagram
+
+\`\`\`mermaid
+stateDiagram-v2
+  [*] --> Draft
+  Draft --> Review: Ready
+  Review --> Draft: Changes requested
+  Review --> Published: Approved
+  Published --> [*]
+\`\`\`
+
+### Gantt Chart
+
+\`\`\`mermaid
+gantt
+  title Writing Plan
+  dateFormat YYYY-MM-DD
+  section Draft
+  Outline      :done,    outline, 2026-01-05, 2d
+  First draft  :active,  draft,   2026-01-07, 4d
+  section Polish
+  Review       :         review,  after draft, 2d
+  Publish      :         publish, after review, 1d
+\`\`\`
+
+If a diagram has a syntax error, Simple MD shows the parser message in place of the diagram so you can fix it.
+
+## 10. Import from the Web
 
 Use **Import...** to fetch a Markdown file from an HTTPS URL. GitHub \`blob\` URLs are converted to raw Markdown automatically. Imported documents open as temporary tabs until you save them into a local folder.
 
-## 10. Local AI Help
+## 11. Local AI Help
 
 The **Get a little help from AI?** button opens an optional local assistant. It can help draft, revise, summarize, or transform selected text. The runtime is designed to run locally on your machine rather than sending document text to a hosted service.
 
-## 11. A Good First Experiment
+## 12. A Good First Experiment
 
 1. Switch to **Split** mode.
 2. Copy one chart block.

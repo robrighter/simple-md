@@ -51,6 +51,10 @@ export async function openMarkdownFileDialog() {
         name: 'Markdown',
         extensions: ['md', 'markdown', 'mdown', 'mkd'],
       },
+      {
+        name: 'All files',
+        extensions: ['*'],
+      },
     ],
   })
 

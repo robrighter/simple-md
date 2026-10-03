@@ -1,7 +1,28 @@
 import { useEffect, useRef } from 'react'
-import { Crepe } from '@milkdown/crepe'
+import { Crepe, CrepeFeature } from '@milkdown/crepe'
+import { languages as defaultLanguages } from '@codemirror/language-data'
+import { LanguageDescription, LanguageSupport, StreamLanguage } from '@codemirror/language'
+import { renderMermaid, mermaidErrorHtml } from '../mermaid/renderMermaid'
+import { createMermaidElement, openMermaidViewer } from '../mermaid/viewer'
 import '@milkdown/crepe/theme/common/style.css'
 import '@milkdown/crepe/theme/frame.css'
+
+// CodeMirror has no Mermaid grammar; register it as a plain-text language so it
+// shows up in the code-block language picker and ```mermaid blocks keep their tag.
+const mermaidLanguage = LanguageDescription.of({
+  name: 'Mermaid',
+  alias: ['mermaid', 'mmd'],
+  extensions: ['mmd', 'mermaid'],
+  load: async () =>
+    new LanguageSupport(
+      StreamLanguage.define({
+        token(stream) {
+          stream.skipToEnd()
+          return null
+        },
+      }),
+    ),
+})
 
 type HybridEditorProps = {
   content: string
@@ -30,6 +51,21 @@ export function HybridEditor({ content, onChange, findQuery, findCurrentIndex }:
     const crepe = new Crepe({
       root: hostRef.current,
       defaultValue: content,
+      featureConfigs: {
+        [CrepeFeature.CodeMirror]: {
+          languages: [...defaultLanguages, mermaidLanguage],
+          // Render ```mermaid blocks as live diagrams next to the editable source.
+          renderPreview: (language, source, applyPreview) => {
+            if (language.toLowerCase() !== 'mermaid' || source.trim().length === 0) {
+              return null
+            }
+            void renderMermaid(source).then((result) => {
+              applyPreview('error' in result ? mermaidErrorHtml(result.error) : createMermaidElement(result.svg))
+            })
+            return undefined
+          },
+        },
+      },
     })
 
     let listenerAttached = false
@@ -108,6 +144,31 @@ export function HybridEditor({ content, onChange, findQuery, findCurrentIndex }:
       CSS.highlights.delete('hybrid-find-current')
     }
   }, [findQuery, findCurrentIndex])
+
+  // Crepe sanitizes preview markup through DOMPurify and re-parses it, which
+  // drops listeners attached to the element we hand it — so open the full-screen
+  // viewer via delegated listeners on the host instead.
+  useEffect(() => {
+    const host = hostRef.current
+    if (!host) return
+
+    function openFrom(target: EventTarget | null, requireButton: boolean) {
+      const el = target instanceof Element ? target : null
+      const diagram = el?.closest('.mermaid-diagram')
+      if (!diagram || (requireButton && !el?.closest('.mermaid-diagram__expand'))) return
+      const svg = diagram.querySelector('.mermaid-diagram__body')?.innerHTML
+      if (svg) openMermaidViewer(svg)
+    }
+
+    const onClick = (event: MouseEvent) => openFrom(event.target, true)
+    const onDoubleClick = (event: MouseEvent) => openFrom(event.target, false)
+    host.addEventListener('click', onClick)
+    host.addEventListener('dblclick', onDoubleClick)
+    return () => {
+      host.removeEventListener('click', onClick)
+      host.removeEventListener('dblclick', onDoubleClick)
+    }
+  }, [])
 
   return <div className="hybrid-shell" ref={hostRef} />
 }

@@ -9,6 +9,11 @@ type TabStripProps = {
   activeDocumentId: string
   onActivate: (documentId: string) => void
   onClose: (documentId: string) => void
+  onCloseOthers: (documentId: string) => void
+  onCloseAll: () => void
+  onCloseUnpinned: () => void
+  onClosePinned: () => void
+  onTogglePin: (documentId: string) => void
   onRename: (documentId: string, nextName: string) => void | Promise<void>
   onOpenDroppedFiles: (paths: string[]) => void | Promise<void>
   onNew: () => void
@@ -19,6 +24,11 @@ export function TabStrip({
   activeDocumentId,
   onActivate,
   onClose,
+  onCloseOthers,
+  onCloseAll,
+  onCloseUnpinned,
+  onClosePinned,
+  onTogglePin,
   onRename,
   onOpenDroppedFiles,
   onNew,
@@ -27,6 +37,7 @@ export function TabStrip({
   const [draftName, setDraftName] = useState('')
   const [dropActive, setDropActive] = useState(false)
   const [draggedMarkdownPaths, setDraggedMarkdownPaths] = useState<string[]>([])
+  const [menu, setMenu] = useState<{ x: number; y: number; documentId: string } | null>(null)
   const inputRef = useRef<HTMLInputElement | null>(null)
   const onOpenDroppedFilesRef = useRef(onOpenDroppedFiles)
 
@@ -47,6 +58,26 @@ export function TabStrip({
 
     return () => window.cancelAnimationFrame(frame)
   }, [editingDocumentId])
+
+  useEffect(() => {
+    if (!menu) return
+
+    const dismiss = () => setMenu(null)
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setMenu(null)
+    }
+
+    window.addEventListener('mousedown', dismiss)
+    window.addEventListener('blur', dismiss)
+    window.addEventListener('resize', dismiss)
+    window.addEventListener('keydown', onKeyDown)
+    return () => {
+      window.removeEventListener('mousedown', dismiss)
+      window.removeEventListener('blur', dismiss)
+      window.removeEventListener('resize', dismiss)
+      window.removeEventListener('keydown', onKeyDown)
+    }
+  }, [menu])
 
   useEffect(() => {
     onOpenDroppedFilesRef.current = onOpenDroppedFiles
@@ -121,6 +152,12 @@ export function TabStrip({
   }
 
   const showDropTarget = dropActive && draggedMarkdownPaths.length > 0
+  const menuDocument = menu ? documents.find((document) => document.id === menu.documentId) : undefined
+  const hasPinned = documents.some((document) => document.isPinned)
+  const hasUnpinned = documents.some((document) => !document.isPinned)
+  const hasOtherClosable = documents.some(
+    (document) => document.id !== menu?.documentId && !document.isPinned,
+  )
 
   return (
     <nav
@@ -169,6 +206,11 @@ export function TabStrip({
             className="tab-strip__item"
             data-active={isActive}
             data-editing={isEditing}
+            data-pinned={document.isPinned ? 'true' : undefined}
+            onContextMenu={(event) => {
+              event.preventDefault()
+              setMenu({ x: event.clientX, y: event.clientY, documentId: document.id })
+            }}
           >
             {isEditing ? (
               <input
@@ -210,7 +252,18 @@ export function TabStrip({
                 <span>{document.title}</span>
               </button>
             )}
-            {documents.length > 1 && !isEditing && (
+            {document.isPinned && !isEditing && (
+              <button
+                type="button"
+                className="tab-strip__pin"
+                aria-label={`Unpin ${document.title}`}
+                title="Unpin tab"
+                onClick={() => onTogglePin(document.id)}
+              >
+                {'\u{1F4CC}'}
+              </button>
+            )}
+            {documents.length > 1 && !document.isPinned && !isEditing && (
               <button
                 type="button"
                 className="tab-strip__close"
@@ -232,6 +285,43 @@ export function TabStrip({
       >
         +
       </button>
+      {menu && menuDocument && (
+        <div
+          role="menu"
+          className="context-menu"
+          style={{ top: menu.y, left: menu.x }}
+          onMouseDown={(event) => event.stopPropagation()}
+        >
+          {[
+            {
+              label: menuDocument.isPinned ? 'Unpin tab' : 'Pin tab',
+              run: () => onTogglePin(menu.documentId),
+            },
+            { label: 'Close tab', run: () => onClose(menu.documentId) },
+            {
+              label: 'Close others',
+              run: () => onCloseOthers(menu.documentId),
+              disabled: !hasOtherClosable,
+            },
+            { label: 'Close all', run: onCloseAll },
+            { label: 'Close all not pinned', run: onCloseUnpinned, disabled: !hasUnpinned },
+            { label: 'Close pinned', run: onClosePinned, disabled: !hasPinned },
+          ].map((item) => (
+            <button
+              key={item.label}
+              type="button"
+              role="menuitem"
+              disabled={item.disabled}
+              onClick={() => {
+                setMenu(null)
+                item.run()
+              }}
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
+      )}
       {showDropTarget && (
         <div className="tab-strip__drop-target" aria-hidden="true">
           Drop to open

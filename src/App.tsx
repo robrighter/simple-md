@@ -155,6 +155,12 @@ function saveRecents(recents: RecentsState) {
   window.localStorage.setItem(RECENTS_KEY, JSON.stringify(recents))
 }
 
+// Opening a file is async, so the "already open?" check can be stale by the time
+// the document is added; never allow two tabs with the same id (React keys).
+function appendDocument(current: OpenDocument[], next: OpenDocument) {
+  return current.some((document) => document.id === next.id) ? current : [...current, next]
+}
+
 function pushRecent(items: string[], value: string) {
   return [value, ...items.filter((item) => item !== value)].slice(0, 8)
 }
@@ -630,12 +636,14 @@ function App() {
         content: payload.content,
         isDirty: false,
         savedVersion: payload.version,
-        mode: activeDocument?.mode ?? 'source',
+        // Non-Markdown files open as plain source: the Hybrid editor would
+        // re-serialize them as Markdown on the first edit and corrupt them.
+        mode: isMarkdownPath(payload.path) ? (activeDocument?.mode ?? 'source') : 'source',
         workspacePath: findOwningWorkspace(payload.path, workspaces),
       }
 
       startTransition(() => {
-        setDocuments((current) => [...current, nextDocument])
+        setDocuments((current) => appendDocument(current, nextDocument))
         setActiveDocumentId(nextDocument.id)
       })
 
@@ -645,7 +653,7 @@ function App() {
       }))
       setLastMessage(`Opened ${payload.name}.`)
     } catch (error) {
-      setLastMessage(getErrorMessage(error, 'Unable to open that markdown file.'))
+      setLastMessage(getErrorMessage(error, 'Unable to open that file.'))
     } finally {
       setIsBusy(false)
     }
@@ -679,6 +687,11 @@ function App() {
 
   function handleModeChange(mode: DocumentMode) {
     if (!activeDocument) {
+      return
+    }
+
+    if (mode === 'wysiwyg' && activeDocument.path && !isMarkdownPath(activeDocument.path)) {
+      setLastMessage('Hybrid editing is only available for Markdown files.')
       return
     }
 
@@ -969,7 +982,7 @@ function App() {
       }
 
       startTransition(() => {
-        setDocuments((current) => [...current, nextDocument])
+        setDocuments((current) => appendDocument(current, nextDocument))
         setActiveDocumentId(nextDocument.id)
       })
       setSelectedTreePath(created.path)
@@ -1257,7 +1270,7 @@ function App() {
       }
 
       startTransition(() => {
-        setDocuments((current) => [...current, nextDocument])
+        setDocuments((current) => appendDocument(current, nextDocument))
         setActiveDocumentId(nextDocument.id)
       })
 
@@ -1276,7 +1289,8 @@ function App() {
   }
 
   async function handleOpenRecentPath(path: string) {
-    if (isMarkdownPath(path)) {
+    // Files can be any type now, so route on the recents list, not the extension.
+    if (isMarkdownPath(path) || recents.files.includes(path)) {
       await handleOpenDocument(path)
       return
     }
@@ -1284,17 +1298,32 @@ function App() {
     await handleOpenWorkspace(path)
   }
 
-  async function handleCloseDocument(documentId: string) {
-    const target = documents.find((document) => document.id === documentId)
+  function handleCloseDocument(documentId: string) {
+    return closeDocuments(new Set([documentId]))
+  }
 
-    if (!target) {
+  // Closes one or more tabs. Asks once if any of them has unsaved changes. The
+  // removal is a functional update because the confirm dialog is async: other
+  // state changes (e.g. a file finishing opening) must not be overwritten.
+  async function closeDocuments(ids: Set<string>, preferActiveId?: string) {
+    const targets = documents.filter((document) => ids.has(document.id))
+
+    if (targets.length === 0) {
       return
     }
 
-    if (target.isDirty) {
+    const dirty = targets.filter((document) => document.isDirty)
+
+    if (dirty.length > 0) {
       const shouldClose = await dialog.confirm({
-        title: `Close ${target.title}?`,
-        message: 'This document has unsaved changes that will be lost.',
+        title:
+          targets.length === 1 ? `Close ${targets[0].title}?` : `Close ${targets.length} tabs?`,
+        message:
+          dirty.length === 1 && targets.length === 1
+            ? 'This document has unsaved changes that will be lost.'
+            : `${dirty.map((document) => document.title).join(', ')} ${
+                dirty.length === 1 ? 'has' : 'have'
+              } unsaved changes that will be lost.`,
         okLabel: 'Discard',
         destructive: true,
       })
@@ -1304,14 +1333,56 @@ function App() {
       }
     }
 
-    const remaining = documents.filter((document) => document.id !== documentId)
-    const nextDocuments = remaining.length > 0 ? remaining : [createWelcomeDocument()]
+    setDocuments((current) => {
+      const remaining = current.filter((document) => !ids.has(document.id))
+      return remaining.length > 0 ? remaining : [createWelcomeDocument()]
+    })
 
-    setDocuments(nextDocuments)
-
-    if (activeDocumentId === documentId) {
-      setActiveDocumentId(nextDocuments[0].id)
+    // If the active tab was closed and nothing is preferred, `activeDocument`
+    // falls back to the first remaining tab (see its definition).
+    if (preferActiveId) {
+      setActiveDocumentId(preferActiveId)
     }
+  }
+
+  // "Close others" keeps pinned tabs, like most tabbed editors.
+  function handleCloseOtherDocuments(documentId: string) {
+    const ids = new Set(
+      documents
+        .filter((document) => document.id !== documentId && !document.isPinned)
+        .map((document) => document.id),
+    )
+    void closeDocuments(ids, documentId)
+  }
+
+  function handleCloseAllDocuments() {
+    void closeDocuments(new Set(documents.map((document) => document.id)))
+  }
+
+  function handleCloseUnpinnedDocuments() {
+    void closeDocuments(
+      new Set(documents.filter((document) => !document.isPinned).map((document) => document.id)),
+    )
+  }
+
+  function handleClosePinnedDocuments() {
+    void closeDocuments(
+      new Set(documents.filter((document) => document.isPinned).map((document) => document.id)),
+    )
+  }
+
+  // Pinned tabs always sit at the left, in their existing relative order.
+  function handleTogglePinDocument(documentId: string) {
+    setDocuments((current) => {
+      const toggled = current.map((document) =>
+        document.id === documentId ? { ...document, isPinned: !document.isPinned } : document,
+      )
+
+      return [
+        ...toggled.filter((document) => document.isPinned),
+        ...toggled.filter((document) => !document.isPinned),
+      ]
+    })
   }
 
   function handleCreateScratchpad() {
@@ -1426,9 +1497,14 @@ function App() {
       <main className="app-main">
         <TabStrip
           documents={documents}
-          activeDocumentId={activeDocumentId}
+          activeDocumentId={activeDocument?.id ?? activeDocumentId}
           onActivate={setActiveDocumentId}
           onClose={(documentId) => void handleCloseDocument(documentId)}
+          onCloseOthers={handleCloseOtherDocuments}
+          onCloseAll={handleCloseAllDocuments}
+          onCloseUnpinned={handleCloseUnpinnedDocuments}
+          onClosePinned={handleClosePinnedDocuments}
+          onTogglePin={handleTogglePinDocument}
           onRename={(documentId, nextName) => void handleRenameDocumentTab(documentId, nextName)}
           onOpenDroppedFiles={(paths) => void handleOpenDroppedMarkdownFiles(paths)}
           onNew={handleCreateScratchpad}

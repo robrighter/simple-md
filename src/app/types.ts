@@ -38,6 +38,7 @@ export type OpenDocument = {
   content: string
   mode: DocumentMode
   isDirty: boolean
+  isPinned?: boolean
   path?: string
   savedVersion?: string
   externalChange?: {

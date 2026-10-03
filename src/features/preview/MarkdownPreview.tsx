@@ -7,6 +7,7 @@ import remarkGfm from 'remark-gfm'
 import remarkMath from 'remark-math'
 import type { Root, Element, Text, RootContent } from 'hast'
 import { InlineChart } from '../charts/InlineChart'
+import { MermaidDiagram } from '../mermaid/MermaidDiagram'
 import { openPathExternally } from '../../lib/desktop'
 import { resolveDocumentUrl } from '../../lib/document'
 
@@ -141,11 +142,15 @@ export function MarkdownPreview({
             components={{
               code(props) {
                 const { className, children, ...rest } = props
-                const language = /language-(\w+)/.exec(className ?? '')?.[1]
+                const language = /language-(\w+)/.exec(className ?? '')?.[1]?.toLowerCase()
                 const rawSpec = String(children).replace(/\n$/, '')
 
                 if (language === 'chart') {
                   return <InlineChart rawSpec={rawSpec} staticRender={staticCharts} />
+                }
+
+                if (language === 'mermaid') {
+                  return <MermaidDiagram source={rawSpec} staticRender={staticCharts} />
                 }
 
                 return (
@@ -180,14 +185,15 @@ export function MarkdownPreview({
               pre(props: MarkdownPreProps) {
                 const firstChild = props.node?.children?.[0]
                 const className = firstChild?.properties?.className
-                const normalizedClassName = Array.isArray(className)
-                  ? className.join(' ')
-                  : className ?? ''
+                const normalizedClassName = (
+                  Array.isArray(className) ? className.join(' ') : className ?? ''
+                ).toLowerCase()
 
                 if (
                   firstChild?.type === 'element' &&
                   firstChild.tagName === 'code' &&
-                  normalizedClassName.includes('language-chart')
+                  (normalizedClassName.includes('language-chart') ||
+                    normalizedClassName.includes('language-mermaid'))
                 ) {
                   return <>{props.children}</>
                 }

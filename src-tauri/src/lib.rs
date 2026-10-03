@@ -102,11 +102,26 @@ fn list_workspace(path: String) -> Result<WorkspaceSnapshot, String> {
     })
 }
 
+const MAX_OPEN_BYTES: u64 = 10 * 1024 * 1024;
+
 #[tauri::command]
 fn open_document(path: String) -> Result<DocumentPayload, String> {
     let target = PathBuf::from(&path);
-    let content = fs::read_to_string(&target)
+    // Any file can be opened now, so refuse unreasonably large ones up front.
+    let size = fs::metadata(&target)
         .with_context(|| format!("Failed to read {}", path))
+        .map_err(error_to_string)?
+        .len();
+    if size > MAX_OPEN_BYTES {
+        return Err(format!(
+            "{} is too large to open ({:.1} MB; the limit is {} MB).",
+            file_name(&target),
+            size as f64 / 1_048_576.0,
+            MAX_OPEN_BYTES / 1_048_576
+        ));
+    }
+    let content = fs::read_to_string(&target)
+        .with_context(|| format!("Failed to read {} (not a UTF-8 text file?)", path))
         .map_err(error_to_string)?;
 
     Ok(DocumentPayload {
